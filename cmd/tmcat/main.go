@@ -95,13 +95,14 @@ func runList(cmd *cli.Command, args []string) error {
 
 		line.AppendTime(p.ESAHeader.Timestamp(), rt.TimeFormat, 0)
 		line.AppendTime(p.PTHHeader.Timestamp(), rt.TimeFormat, 0)
-		line.AppendUint(uint64(p.CCSDSHeader.Sequence()), 6, linewriter.AlignRight)
+		line.AppendUint(uint64(p.Sequence()), 6, linewriter.AlignRight)
 		line.AppendString(ft.String(), 16, linewriter.AlignRight)
-		line.AppendUint(uint64(p.CCSDSHeader.Apid()), 4, linewriter.AlignRight)
-		line.AppendUint(uint64(p.CCSDSHeader.Length-1), 6, linewriter.AlignRight)
+		line.AppendUint(uint64(p.Apid()), 4, linewriter.AlignRight)
+		line.AppendUint(uint64(p.Length-1), 6, linewriter.AlignRight)
 		line.AppendString(pt.String(), 16, linewriter.AlignRight)
-		os.Stdout.Write(append(line.Bytes(), '\n'))
+    line.AppendUint(uint64(p.Sid), 8, linewriter.Hex | linewriter.WithZero)
 
+		os.Stdout.Write(append(line.Bytes(), '\n'))
 		line.Reset()
 	}
 	return nil
