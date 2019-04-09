@@ -27,12 +27,12 @@ Use {{.Name}} [command] -h for more information about its usage.
 
 var commands = []*cli.Command{
 	{
-		Usage: "list [-c] <file...>",
+		Usage: "list [-c] [-p] <file...>",
 		Short: "",
 		Run:   runList,
 	},
 	{
-		Usage: "diff <file...>",
+		Usage: "diff [-p] <file...>",
 		Short: "",
 		Run:   runDiff,
 	},
@@ -56,6 +56,7 @@ func main() {
 }
 
 func runList(cmd *cli.Command, args []string) error {
+	apid := cmd.Flag.Int("p", 0, "apid")
 	csv := cmd.Flag.Bool("c", false, "csv format")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
@@ -84,6 +85,9 @@ func runList(cmd *cli.Command, args []string) error {
 				break
 			}
 			return err
+		}
+		if *apid > 0 && int(p.Apid()) != *apid {
+			continue
 		}
 
 		ft := p.CCSDSHeader.Segmentation()
@@ -152,6 +156,7 @@ func runCount(cmd *cli.Command, args []string) error {
 }
 
 func runDiff(cmd *cli.Command, args []string) error {
+	apid := cmd.Flag.Int("p", 0, "apid")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
 	}
@@ -176,6 +181,9 @@ func runDiff(cmd *cli.Command, args []string) error {
 				break
 			}
 			return err
+		}
+		if *apid > 0 && int(p.Apid()) != *apid {
+			continue
 		}
 		if other, ok := stats[p.Apid()]; ok {
 			diff := (p.Sequence() - other.Sequence())
