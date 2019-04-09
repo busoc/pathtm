@@ -100,7 +100,7 @@ func runList(cmd *cli.Command, args []string) error {
 		line.AppendUint(uint64(p.Apid()), 4, linewriter.AlignRight)
 		line.AppendUint(uint64(p.Length-1), 6, linewriter.AlignRight)
 		line.AppendString(pt.String(), 16, linewriter.AlignRight)
-    line.AppendUint(uint64(p.Sid), 8, linewriter.Hex | linewriter.WithZero)
+		line.AppendUint(uint64(p.Sid), 8, linewriter.Hex|linewriter.WithZero)
 
 		os.Stdout.Write(append(line.Bytes(), '\n'))
 		line.Reset()
@@ -158,6 +158,7 @@ func runCount(cmd *cli.Command, args []string) error {
 
 func runDiff(cmd *cli.Command, args []string) error {
 	apid := cmd.Flag.Int("p", 0, "apid")
+	duration := cmd.Flag.Duration("d", 0, "minimum gap duration")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
 	}
@@ -188,13 +189,15 @@ func runDiff(cmd *cli.Command, args []string) error {
 		}
 		if other, ok := stats[p.Apid()]; ok {
 			diff := (p.Sequence() - other.Sequence())
-			if diff != 1 && diff != p.Sequence() {
+			fd, td := other.ESAHeader.Timestamp(), p.ESAHeader.Timestamp()
+			if diff != 1 && diff != p.Sequence() && (*duration <= 0 || td.Sub(fd) >= *duration) {
 				line.AppendUint(uint64(p.Apid()), 4, 0)
-				line.AppendTime(other.ESAHeader.Timestamp(), rt.TimeFormat, 0)
-				line.AppendTime(p.ESAHeader.Timestamp(), rt.TimeFormat, 0)
+				line.AppendTime(fd, rt.TimeFormat, 0)
+				line.AppendTime(td, rt.TimeFormat, 0)
 				line.AppendUint(uint64(other.Sequence()), 6, 0)
 				line.AppendUint(uint64(p.Sequence()), 6, 0)
 				line.AppendUint(uint64(diff-1), 6, linewriter.AlignRight)
+				line.AppendDuration(td.Sub(fd), 12, linewriter.AlignRight)
 
 				os.Stdout.Write(append(line.Bytes(), '\n'))
 				line.Reset()
