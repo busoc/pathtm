@@ -2,6 +2,8 @@ package pathtm
 
 import (
 	"io"
+  "encoding/binary"
+  "time"
 
 	"github.com/busoc/timutil"
 )
@@ -89,6 +91,8 @@ type CCSDSSegment uint8
 
 func (c CCSDSSegment) String() string {
 	switch c {
+  default:
+    return "***"
 	case 0:
 		return "continuation"
 	case 1:
@@ -175,7 +179,7 @@ func (c CCSDSHeader) Apid() uint16 {
 }
 
 func (c CCSDSHeader) Sequence() uint16 {
-	return c.Fragment & 0x3FFFF
+	return c.Fragment & 0x3FFF
 }
 
 func (c CCSDSHeader) Segmentation() CCSDSSegment {
@@ -189,8 +193,8 @@ type ESAHeader struct {
 	Info   uint8
 }
 
-func (e ESAHEader) Timestamp() time.Time {
-	return timutil.Join5(p.Coarse, p.Fine)
+func (e ESAHeader) Timestamp() time.Time {
+	return timutil.Join5(e.Coarse, e.Fine)
 }
 
 func (e ESAHeader) PacketType() ESAPacketType {
