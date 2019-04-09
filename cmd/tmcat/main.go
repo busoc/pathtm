@@ -152,5 +152,46 @@ func runCount(cmd *cli.Command, args []string) error {
 }
 
 func runDiff(cmd *cli.Command, args []string) error {
-	return cmd.Flag.Parse(args)
+	if err := cmd.Flag.Parse(args); err != nil {
+		return err
+	}
+	mr, err := rt.Browse(cmd.Flag.Args(), true)
+	if err != nil {
+		return err
+	}
+	defer mr.Close()
+	d := pathtm.NewDecoder(rt.NewReader(mr))
+
+	options := []func(*linewriter.Writer){
+		linewriter.WithPadding([]byte(" ")),
+		linewriter.WithSeparator([]byte("|")),
+	}
+	line := linewriter.NewWriter(1024, options...)
+
+	stats := make(map[uint16]pathtm.Packet)
+	for {
+		p, err := d.Decode(false)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+		if other, ok := stats[p.Apid()]; ok {
+			diff := (p.Sequence() - other.Sequence())
+			if diff != 1 && diff != p.Sequence() {
+				line.AppendUint(uint64(p.Apid()), 4, 0)
+				line.AppendTime(other.ESAHeader.Timestamp(), rt.TimeFormat, 0)
+				line.AppendTime(p.ESAHeader.Timestamp(), rt.TimeFormat, 0)
+				line.AppendUint(uint64(other.Sequence()), 6, 0)
+				line.AppendUint(uint64(p.Sequence()), 6, 0)
+				line.AppendUint(uint64(diff-1), 6, linewriter.AlignRight)
+
+				os.Stdout.Write(append(line.Bytes(), '\n'))
+				line.Reset()
+			}
+		}
+		stats[p.Apid()] = p
+	}
+	return nil
 }
