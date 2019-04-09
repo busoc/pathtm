@@ -1,14 +1,15 @@
 package main
 
 import (
-  "log"
-  "io"
-  "os"
+	"io"
+	"log"
+	"os"
+	"sort"
 
-  "github.com/midbel/linewriter"
-  "github.com/midbel/cli"
-  "github.com/busoc/rt"
-  "github.com/busoc/pathtm"
+	"github.com/busoc/pathtm"
+	"github.com/busoc/rt"
+	"github.com/midbel/cli"
+	"github.com/midbel/linewriter"
 )
 
 const helpText = `{{.Name}} scan the HRDP archive to consolidate the USOC HRDP archive
@@ -55,17 +56,18 @@ func main() {
 }
 
 func runList(cmd *cli.Command, args []string) error {
-  csv := cmd.Flag.Bool("c", false, "csv format")
-  if err := cmd.Flag.Parse(args); err != nil {
-    return err
-  }
-  mr, err := rt.Browse(cmd.Flag.Args(), true)
+	csv := cmd.Flag.Bool("c", false, "csv format")
+	if err := cmd.Flag.Parse(args); err != nil {
+		return err
+	}
+	mr, err := rt.Browse(cmd.Flag.Args(), true)
 	if err != nil {
 		return err
 	}
-  d := pathtm.NewDecoder(rt.NewReader(mr))
+	defer mr.Close()
+	d := pathtm.NewDecoder(rt.NewReader(mr))
 
-  var options []func(*linewriter.Writer)
+	var options []func(*linewriter.Writer)
 	if *csv {
 		options = append(options, linewriter.AsCSV(false))
 	} else {
@@ -76,35 +78,79 @@ func runList(cmd *cli.Command, args []string) error {
 	}
 	line := linewriter.NewWriter(1024, options...)
 	for {
-    p, err := d.Decode(false)
-    if err != nil {
-      if err == io.EOF {
-        break
-      }
-      return err
-    }
+		p, err := d.Decode(false)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
 
-    ft := p.CCSDSHeader.Segmentation()
-    pt := p.ESAHeader.PacketType()
+		ft := p.CCSDSHeader.Segmentation()
+		pt := p.ESAHeader.PacketType()
 
-    line.AppendTime(p.ESAHeader.Timestamp(), rt.TimeFormat, 0)
-    line.AppendTime(p.PTHHeader.Timestamp(), rt.TimeFormat, 0)
-    line.AppendUint(uint64(p.CCSDSHeader.Sequence()), 6, linewriter.AlignRight)
-    line.AppendString(ft.String(), 16, linewriter.AlignRight)
-    line.AppendUint(uint64(p.CCSDSHeader.Apid()), 4, linewriter.AlignRight)
-    line.AppendUint(uint64(p.CCSDSHeader.Length-1), 6, linewriter.AlignRight)
-    line.AppendString(pt.String(), 16, linewriter.AlignRight)
-    os.Stdout.Write(append(line.Bytes(), '\n'))
+		line.AppendTime(p.ESAHeader.Timestamp(), rt.TimeFormat, 0)
+		line.AppendTime(p.PTHHeader.Timestamp(), rt.TimeFormat, 0)
+		line.AppendUint(uint64(p.CCSDSHeader.Sequence()), 6, linewriter.AlignRight)
+		line.AppendString(ft.String(), 16, linewriter.AlignRight)
+		line.AppendUint(uint64(p.CCSDSHeader.Apid()), 4, linewriter.AlignRight)
+		line.AppendUint(uint64(p.CCSDSHeader.Length-1), 6, linewriter.AlignRight)
+		line.AppendString(pt.String(), 16, linewriter.AlignRight)
+		os.Stdout.Write(append(line.Bytes(), '\n'))
 
-    line.Reset()
-  }
-  return nil
+		line.Reset()
+	}
+	return nil
 }
 
 func runCount(cmd *cli.Command, args []string) error {
-  return cmd.Flag.Parse(args)
+	// state := cmd.Flag.Bool("s", false, "count by type")
+	if err := cmd.Flag.Parse(args); err != nil {
+		return err
+	}
+	mr, err := rt.Browse(cmd.Flag.Args(), true)
+	if err != nil {
+		return err
+	}
+	defer mr.Close()
+	d := pathtm.NewDecoder(rt.NewReader(mr))
+
+	stats := make(map[uint16]int)
+	var apids []uint16
+	for {
+		p, err := d.Decode(false)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+		if _, ok := stats[p.Apid()]; !ok {
+			apids = append(apids, p.Apid())
+		}
+		stats[p.Apid()]++
+	}
+	if len(stats) == 0 {
+		return nil
+	}
+	options := []func(*linewriter.Writer){
+		linewriter.WithPadding([]byte(" ")),
+		linewriter.WithSeparator([]byte("|")),
+	}
+	line := linewriter.NewWriter(1024, options...)
+	sort.Slice(apids, func(i, j int) bool { return apids[i] < apids[j] })
+	for i := 0; i < len(apids); i++ {
+		id := apids[i]
+
+		line.AppendUint(uint64(id), 6, 0)
+		line.AppendUint(uint64(stats[id]), 6, 0)
+
+		os.Stdout.Write(append(line.Bytes(), '\n'))
+		line.Reset()
+	}
+	return nil
 }
 
 func runDiff(cmd *cli.Command, args []string) error {
-  return cmd.Flag.Parse(args)
+	return cmd.Flag.Parse(args)
 }

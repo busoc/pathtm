@@ -1,9 +1,9 @@
 package pathtm
 
 import (
+	"encoding/binary"
 	"io"
-  "encoding/binary"
-  "time"
+	"time"
 
 	"github.com/busoc/timutil"
 )
@@ -91,8 +91,8 @@ type CCSDSSegment uint8
 
 func (c CCSDSSegment) String() string {
 	switch c {
-  default:
-    return "***"
+	default:
+		return "***"
 	case 0:
 		return "continuation"
 	case 1:
