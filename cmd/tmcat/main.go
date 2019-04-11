@@ -120,7 +120,8 @@ func runCount(cmd *cli.Command, args []string) error {
 	defer mr.Close()
 	d := pathtm.NewDecoder(rt.NewReader(mr))
 
-	stats := make(map[uint16]int)
+	stats := make(map[uint16]rt.Coze)
+	seen := make(map[uint16]pathtm.Packet)
 	var apids []uint16
 	for {
 		p, err := d.Decode(false)
@@ -133,7 +134,16 @@ func runCount(cmd *cli.Command, args []string) error {
 		if _, ok := stats[p.Apid()]; !ok {
 			apids = append(apids, p.Apid())
 		}
-		stats[p.Apid()]++
+		cz := stats[p.Apid()]
+		cz.Count++
+		cz.Size += uint64(p.CCSDSHeader.Length)
+		if other, ok := seen[p.Apid()]; ok {
+			diff := p.Sequence() - other.Sequence()
+			if diff != 1 && diff != p.Sequence() {
+				cz.Missing += uint64(diff)-1
+			}
+		}
+		seen[p.Apid()], stats[p.Apid()] = p, cz
 	}
 	if len(stats) == 0 {
 		return nil
@@ -148,7 +158,10 @@ func runCount(cmd *cli.Command, args []string) error {
 		id := apids[i]
 
 		line.AppendUint(uint64(id), 6, 0)
-		line.AppendUint(uint64(stats[id]), 6, 0)
+		cz := stats[id]
+		line.AppendUint(cz.Count, 6, 0)
+		line.AppendUint(cz.Missing, 6, 0)
+		line.AppendUint(cz.Size, 6, 0)
 
 		os.Stdout.Write(append(line.Bytes(), '\n'))
 		line.Reset()
