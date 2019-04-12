@@ -12,23 +12,23 @@ import (
 )
 
 func runDispatch(cmd *cli.Command, args []string) error {
-	file := cmd.Flag.String("f", "", "file")
+	datadir := cmd.Flag.String("d", "", "data")
 	apid := cmd.Flag.Int("p", 0, "apid")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(*file), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cmd.Flag.Arg(0)), 0755); err != nil {
 		return err
 	}
 
-	mr, err := rt.Browse(cmd.Flag.Args(), true)
+	mr, err := rt.Browse(*datadir, true)
 	if err != nil {
 		return err
 	}
 	defer mr.Close()
 
-	w, err := os.Create(*file)
+	w, err := os.Create(cmd.Flag.Arg(0))
 	if err != nil {
 		return err
 	}
