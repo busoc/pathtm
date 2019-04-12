@@ -11,11 +11,6 @@ import (
 	"github.com/midbel/xxh"
 )
 
-var options = []linewriter.Option{
-	linewriter.WithPadding([]byte(" ")),
-	linewriter.WithSeparator([]byte("|")),
-}
-
 func main() {
 	flag.Parse()
 
@@ -27,8 +22,9 @@ func main() {
 	defer r.Close()
 
 	buffer := make([]byte, pathtm.CCSDSHeaderLen)
-	line := linewriter.NewWriter(256, options...)
 	digest := xxh.New64(0)
+
+  d := Dump()
 	for i := 1; ; i++ {
 		_, err := r.Read(buffer)
 		switch err {
@@ -44,15 +40,7 @@ func main() {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(2)
 			}
-			line.AppendUint(uint64(i), 4, linewriter.AlignRight)
-			line.AppendUint(uint64(c.Apid()), 4, linewriter.AlignRight)
-			line.AppendUint(uint64(c.Sequence()), 6, linewriter.AlignRight)
-			line.AppendString(c.Segmentation().String(), 12, linewriter.AlignRight)
-			line.AppendUint(uint64(c.Len()), 6, linewriter.AlignRight)
-			line.AppendBytes(digest.Sum(nil), 16, linewriter.WithZero|linewriter.Hex)
-
-			os.Stdout.Write(append(line.Bytes(), '\n'))
-			line.Reset()
+      d.Dump(c, digest.Sum64())
 		case io.EOF:
 			fmt.Fprintf(os.Stdout, "%d packets\n", i)
 			return
@@ -61,4 +49,43 @@ func main() {
 			os.Exit(2)
 		}
 	}
+}
+
+type Dumper struct {
+  line *linewriter.Writer
+  seen map[uint16]pathtm.CCSDSHeader
+}
+
+func Dump() *Dumper {
+  options := []linewriter.Option{
+  	linewriter.WithPadding([]byte(" ")),
+  	linewriter.WithSeparator([]byte("|")),
+  }
+  d := Dumper{
+    line: linewriter.NewWriter(256, options...),
+    seen: make(map[uint16]pathtm.CCSDSHeader),
+  }
+  return &d
+}
+
+func (d *Dumper) Dump(c pathtm.CCSDSHeader, digest uint64) {
+  defer d.line.Reset()
+
+  var missing uint16
+  if other, ok := d.seen[c.Apid()]; ok {
+    diff := c.Sequence() - other.Sequence()
+    if diff != c.Sequence() && diff > 1 {
+      missing = diff-1
+    }
+  }
+  d.seen[c.Apid()] = c
+
+  d.line.AppendUint(uint64(c.Apid()), 4, linewriter.AlignRight)
+  d.line.AppendUint(uint64(missing), 6, linewriter.AlignRight)
+  d.line.AppendUint(uint64(c.Sequence()), 6, linewriter.AlignRight)
+  d.line.AppendString(c.Segmentation().String(), 12, linewriter.AlignRight)
+  d.line.AppendUint(uint64(c.Len()), 6, linewriter.AlignRight)
+  d.line.AppendUint(digest, 16, linewriter.WithZero|linewriter.Hex)
+
+  os.Stdout.Write(append(d.line.Bytes(), '\n'))
 }
