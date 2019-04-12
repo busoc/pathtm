@@ -41,6 +41,11 @@ var commands = []*cli.Command{
 		Short: "",
 		Run:   runCount,
 	},
+	{
+		Usage: "dispatch [-p] <file...>",
+		Short: "",
+		Run:   runDispatch,
+	},
 }
 
 func main() {
@@ -66,7 +71,7 @@ func runList(cmd *cli.Command, args []string) error {
 		return err
 	}
 	defer mr.Close()
-	d := pathtm.NewDecoder(rt.NewReader(mr))
+	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
 
 	var options []func(*linewriter.Writer)
 	if *csv {
@@ -85,9 +90,6 @@ func runList(cmd *cli.Command, args []string) error {
 				break
 			}
 			return err
-		}
-		if *apid > 0 && int(p.Apid()) != *apid {
-			continue
 		}
 
 		ft := p.CCSDSHeader.Segmentation()
@@ -118,7 +120,7 @@ func runCount(cmd *cli.Command, args []string) error {
 		return err
 	}
 	defer mr.Close()
-	d := pathtm.NewDecoder(rt.NewReader(mr))
+	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(0))
 
 	stats := make(map[uint16]rt.Coze)
 	seen := make(map[uint16]pathtm.Packet)
@@ -140,7 +142,7 @@ func runCount(cmd *cli.Command, args []string) error {
 		if other, ok := seen[p.Apid()]; ok {
 			diff := p.Sequence() - other.Sequence()
 			if diff != 1 && diff != p.Sequence() {
-				cz.Missing += uint64(diff)-1
+				cz.Missing += uint64(diff) - 1
 			}
 		}
 		seen[p.Apid()], stats[p.Apid()] = p, cz
@@ -180,7 +182,7 @@ func runDiff(cmd *cli.Command, args []string) error {
 		return err
 	}
 	defer mr.Close()
-	d := pathtm.NewDecoder(rt.NewReader(mr))
+	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
 
 	options := []func(*linewriter.Writer){
 		linewriter.WithPadding([]byte(" ")),

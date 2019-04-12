@@ -113,12 +113,33 @@ type Packet struct {
 }
 
 type Decoder struct {
+	filter func(CCSDSHeader, ESAHeader) (bool, error)
 	inner  io.Reader
 	buffer []byte
 }
 
-func NewDecoder(r io.Reader) *Decoder {
+func WithApid(apid int) func(CCSDSHeader, ESAHeader) (bool, error) {
+	i := uint16(apid)
+	return func(c CCSDSHeader, _ ESAHeader) (bool, error) {
+		return (i > 0 && i == c.Apid()), nil
+	}
+}
+
+func WithSid(sid int) func(CCSDSHeader, ESAHeader) (bool, error) {
+	i := uint32(sid)
+	return func(_ CCSDSHeader, e ESAHeader) (bool, error) {
+		return (i > 0 && i == e.Sid), nil
+	}
+}
+
+func NewDecoder(r io.Reader, filter func(CCSDSHeader, ESAHeader) (bool, error)) *Decoder {
+	if filter == nil {
+		filter = func(_ CCSDSHeader, _ ESAHeader) (bool, error) {
+			return true, nil
+		}
+	}
 	return &Decoder{
+		filter: filter,
 		inner:  r,
 		buffer: make([]byte, BufferSize),
 	}
@@ -129,11 +150,24 @@ func DecodePacket(buffer []byte, data bool) (Packet, error) {
 }
 
 func (d *Decoder) Decode(data bool) (p Packet, err error) {
-	n, err := d.inner.Read(d.buffer)
+	var (
+		n    int
+		keep bool
+	)
+	n, err = d.inner.Read(d.buffer)
 	if err != nil {
 		return
 	}
-	return decodePacket(d.buffer[:n], data)
+	p, err = decodePacket(d.buffer[:n], data)
+	if err != nil {
+		return
+	}
+	keep, err = d.filter(p.CCSDSHeader, p.ESAHeader)
+	if !keep {
+		return d.Decode(data)
+	}
+	return
+
 }
 
 func decodePacket(body []byte, data bool) (p Packet, err error) {
