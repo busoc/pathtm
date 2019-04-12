@@ -2,11 +2,14 @@ package pathtm
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"time"
 
 	"github.com/busoc/timutil"
 )
+
+var ErrEmpty = errors.New("no data")
 
 const BufferSize = 4 << 10
 
@@ -112,6 +115,20 @@ type Packet struct {
 	Sum  uint32
 }
 
+func (p Packet) Marshal() ([]byte, error) {
+	if len(p.Data) == 0 {
+		return nil, ErrEmpty
+	}
+	var offset int
+	buf := make([]byte, CCSDSHeaderLen+int(p.Length))
+	offset += copy(buf[offset:], encodeCCSDS(p.CCSDSHeader))
+	if set := (p.CCSDSHeader.Pid >> 11) & 0x1; set != 0 {
+		offset += copy(buf[offset:], encodeESA(p.ESAHeader))
+	}
+	copy(buf[offset:], p.Data)
+	return buf, nil
+}
+
 type Decoder struct {
 	filter func(CCSDSHeader, ESAHeader) (bool, error)
 	inner  io.Reader
@@ -180,10 +197,12 @@ func decodePacket(body []byte, data bool) (p Packet, err error) {
 		return
 	}
 	offset += CCSDSHeaderLen
-	if p.ESAHeader, err = decodeESA(body[offset:]); err != nil {
-		return
+	if set := (p.Pid >> 11) & 0x1; set != 0 {
+		if p.ESAHeader, err = decodeESA(body[offset:]); err != nil {
+			return
+		}
+		offset += ESAHeaderLen
 	}
-	offset += ESAHeaderLen
 	if data {
 		p.Data = make([]byte, int(p.CCSDSHeader.Length-ESAHeaderLen))
 		copy(p.Data, body[offset:])
@@ -206,6 +225,10 @@ type CCSDSHeader struct {
 	Pid      uint16
 	Fragment uint16
 	Length   uint16
+}
+
+func (c CCSDSHeader) Len() uint16 {
+	return c.Length - 1
 }
 
 func (c CCSDSHeader) Apid() uint16 {
@@ -248,6 +271,10 @@ func decodePTH(body []byte) (PTHHeader, error) {
 	return h, nil
 }
 
+func DecodeCCSDS(body []byte) (CCSDSHeader, error) {
+	return decodeCCSDS(body)
+}
+
 func decodeCCSDS(body []byte) (CCSDSHeader, error) {
 	var h CCSDSHeader
 	if len(body) < CCSDSHeaderLen {
@@ -259,6 +286,16 @@ func decodeCCSDS(body []byte) (CCSDSHeader, error) {
 	h.Length = binary.BigEndian.Uint16(body[4:])
 
 	return h, nil
+}
+
+func encodeCCSDS(c CCSDSHeader) []byte {
+	buf := make([]byte, CCSDSHeaderLen)
+
+	binary.BigEndian.PutUint16(buf, c.Pid)
+	binary.BigEndian.PutUint16(buf[2:], c.Fragment)
+	binary.BigEndian.PutUint16(buf[4:], c.Length)
+
+	return buf
 }
 
 func decodeESA(body []byte) (ESAHeader, error) {
@@ -273,4 +310,15 @@ func decodeESA(body []byte) (ESAHeader, error) {
 	h.Sid = binary.BigEndian.Uint32(body[6:])
 
 	return h, nil
+}
+
+func encodeESA(e ESAHeader) []byte {
+	buf := make([]byte, ESAHeaderLen)
+
+	binary.BigEndian.PutUint32(buf, e.Coarse)
+	buf[4] = byte(e.Fine)
+	buf[5] = byte(e.Info)
+	binary.BigEndian.PutUint32(buf, e.Sid)
+
+	return buf
 }

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"io"
-	// "os"
+	"os"
+	"path/filepath"
 
 	"github.com/busoc/pathtm"
 	"github.com/busoc/rt"
@@ -10,10 +12,13 @@ import (
 )
 
 func runDispatch(cmd *cli.Command, args []string) error {
-	// ccsds := cmd.Flag.Bool("ccsds", false, "only ccsds packet")
 	file := cmd.Flag.String("f", "", "file")
 	apid := cmd.Flag.Int("p", 0, "apid")
 	if err := cmd.Flag.Parse(args); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(*file), 0755); err != nil {
 		return err
 	}
 
@@ -30,15 +35,28 @@ func runDispatch(cmd *cli.Command, args []string) error {
 	defer w.Close()
 
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
-	for {
+
+	var skipped, size int
+	for i := 1; ; i++ {
 		p, err := d.Decode(true)
-		if err != nil {
-			if err == io.EOF {
-				break
+		switch err {
+		case nil:
+			buf, err := p.Marshal()
+			if err != nil {
+				skipped++
+				continue
 			}
+			if n, err := w.Write(buf); err != nil {
+				skipped++
+				continue
+			} else {
+				size += n
+			}
+		case io.EOF:
+			fmt.Fprintf(os.Stdout, "%d packets written (%d skipped, %dKB)\n", i-1, skipped, size>>10)
+			return nil
+		default:
 			return err
 		}
-
 	}
-	return nil
 }

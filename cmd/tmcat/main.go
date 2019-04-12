@@ -73,11 +73,11 @@ func runList(cmd *cli.Command, args []string) error {
 	defer mr.Close()
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
 
-	var options []func(*linewriter.Writer)
+	var options []linewriter.Option
 	if *csv {
 		options = append(options, linewriter.AsCSV(false))
 	} else {
-		options = []func(*linewriter.Writer){
+		options = []linewriter.Option{
 			linewriter.WithPadding([]byte(" ")),
 			linewriter.WithSeparator([]byte("|")),
 		}
@@ -150,7 +150,7 @@ func runCount(cmd *cli.Command, args []string) error {
 	if len(stats) == 0 {
 		return nil
 	}
-	options := []func(*linewriter.Writer){
+	options := []linewriter.Option{
 		linewriter.WithPadding([]byte(" ")),
 		linewriter.WithSeparator([]byte("|")),
 	}
@@ -184,7 +184,7 @@ func runDiff(cmd *cli.Command, args []string) error {
 	defer mr.Close()
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
 
-	options := []func(*linewriter.Writer){
+	options := []linewriter.Option{
 		linewriter.WithPadding([]byte(" ")),
 		linewriter.WithSeparator([]byte("|")),
 	}
