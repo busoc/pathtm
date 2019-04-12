@@ -22,7 +22,7 @@ func runDispatch(cmd *cli.Command, args []string) error {
 		return err
 	}
 
-	mr, err := rt.Browse(*datadir, true)
+	mr, err := rt.Browse([]string{*datadir}, true)
 	if err != nil {
 		return err
 	}

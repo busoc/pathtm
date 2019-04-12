@@ -138,6 +138,9 @@ type Decoder struct {
 func WithApid(apid int) func(CCSDSHeader, ESAHeader) (bool, error) {
 	i := uint16(apid)
 	return func(c CCSDSHeader, _ ESAHeader) (bool, error) {
+		if i <= 0 {
+			return true, nil
+		}
 		return (i > 0 && i == c.Apid()), nil
 	}
 }
@@ -145,6 +148,9 @@ func WithApid(apid int) func(CCSDSHeader, ESAHeader) (bool, error) {
 func WithSid(sid int) func(CCSDSHeader, ESAHeader) (bool, error) {
 	i := uint32(sid)
 	return func(_ CCSDSHeader, e ESAHeader) (bool, error) {
+		if i <= 0 {
+			return true, nil
+		}
 		return (i > 0 && i == e.Sid), nil
 	}
 }
