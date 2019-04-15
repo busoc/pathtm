@@ -117,6 +117,9 @@ type key struct {
 }
 
 func runCount(cmd *cli.Command, args []string) error {
+	// daily := cmd.Flag.Bool("d", false, "produces a daily count")
+	// apid := cmd.Flag.Int("p", 0, "count packets only by apid")
+	csv := cmd.Flag.Bool("c", false, "csv")
 	by := cmd.Flag.String("b", "", "count packets by")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
@@ -166,9 +169,14 @@ func runCount(cmd *cli.Command, args []string) error {
 	if len(stats) == 0 {
 		return nil
 	}
-	options := []linewriter.Option{
-		linewriter.WithPadding([]byte(" ")),
-		linewriter.WithSeparator([]byte("|")),
+	var options []linewriter.Option
+	if *csv {
+		options = append(options, linewriter.AsCSV(true))
+	} else {
+		options = []linewriter.Option{
+			linewriter.WithPadding([]byte(" ")),
+			linewriter.WithSeparator([]byte("|")),
+		}
 	}
 	line := linewriter.NewWriter(1024, options...)
 
