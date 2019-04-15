@@ -183,7 +183,7 @@ func runCount(cmd *cli.Command, args []string) error {
 		cz := stats[k]
 		line.AppendUint(cz.Count, 8, linewriter.AlignRight)
 		line.AppendUint(cz.Missing, 8, linewriter.AlignRight)
-		line.AppendUint(cz.Size>>10, 8, linewriter.AlignRight)
+		line.AppendSize(int64(cz.Size), 8, linewriter.AlignRight)
 		line.AppendUint(cz.First, 8, linewriter.AlignRight)
 		line.AppendTime(cz.StartTime, rt.TimeFormat, linewriter.AlignRight)
 		line.AppendUint(cz.Last, 8, linewriter.AlignRight)
