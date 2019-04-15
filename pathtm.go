@@ -120,7 +120,7 @@ func (p Packet) Missing(other Packet) int {
 		return -1
 	}
 	diff := (p.Sequence() - other.Sequence()) & 0x3FFF
-	return int(diff-1)
+	return int(diff - 1)
 }
 
 func (p Packet) Marshal() ([]byte, error) {

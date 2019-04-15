@@ -12,7 +12,7 @@ import (
 )
 
 func runMerge(cmd *cli.Command, args []string) error {
-  return cmd.Flag.Parse(args)
+	return cmd.Flag.Parse(args)
 }
 
 func runSort(cmd *cli.Command, args []string) error {

@@ -209,7 +209,7 @@ func byApid(p pathtm.Packet) key {
 }
 
 func bySource(p pathtm.Packet) key {
-	k := key {
+	k := key{
 		Pid: p.CCSDSHeader.Apid(),
 		Sid: p.ESAHeader.Sid,
 	}
