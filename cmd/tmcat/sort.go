@@ -15,7 +15,7 @@ func runMerge(cmd *cli.Command, args []string) error {
   return cmd.Flag.Parse(args)
 }
 
-func runDispatch(cmd *cli.Command, args []string) error {
+func runSort(cmd *cli.Command, args []string) error {
 	datadir := cmd.Flag.String("d", "", "data")
 	apid := cmd.Flag.Int("p", 0, "apid")
 	if err := cmd.Flag.Parse(args); err != nil {

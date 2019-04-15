@@ -42,9 +42,9 @@ var commands = []*cli.Command{
 		Run:   runCount,
 	},
 	{
-		Usage: "dispatch [-p] [-d] <file>",
+		Usage: "sort [-p] [-d] <file>",
 		Short: "",
-		Run:   runDispatch,
+		Run:   runSort,
 	},
 }
 
