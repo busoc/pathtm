@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -110,10 +111,24 @@ func runList(cmd *cli.Command, args []string) error {
 	return nil
 }
 
+type key struct {
+	Pid uint16
+	Sid uint32
+}
+
 func runCount(cmd *cli.Command, args []string) error {
-	// state := cmd.Flag.Bool("s", false, "count by type")
+	by := cmd.Flag.String("b", "", "count packets by")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
+	}
+	var byFunc func(pathtm.Packet) key
+	switch *by {
+	case "", "apid":
+		byFunc = byApid
+	case "sid", "source":
+		byFunc = bySource
+	default:
+		return fmt.Errorf("invalid value: %s", *by)
 	}
 	mr, err := rt.Browse(cmd.Flag.Args(), true)
 	if err != nil {
@@ -122,9 +137,8 @@ func runCount(cmd *cli.Command, args []string) error {
 	defer mr.Close()
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(0))
 
-	stats := make(map[uint16]rt.Coze)
+	stats := make(map[key]rt.Coze)
 	seen := make(map[uint16]pathtm.Packet)
-	var apids []uint16
 	for {
 		p, err := d.Decode(false)
 		if err != nil {
@@ -133,19 +147,21 @@ func runCount(cmd *cli.Command, args []string) error {
 			}
 			return err
 		}
-		if _, ok := stats[p.Apid()]; !ok {
-			apids = append(apids, p.Apid())
-		}
-		cz := stats[p.Apid()]
+		k := byFunc(p)
+		cz := stats[k]
 		cz.Count++
 		cz.Size += uint64(p.CCSDSHeader.Length)
-		if other, ok := seen[p.Apid()]; ok {
-			diff := p.Sequence() - other.Sequence()
-			if diff != 1 && diff != p.Sequence() {
-				cz.Missing += uint64(diff) - 1
-			}
+		cz.Last, cz.EndTime = uint64(p.Sequence()), p.ESAHeader.Timestamp()
+		if cz.StartTime.IsZero() {
+			cz.First, cz.StartTime = cz.Last, cz.EndTime
 		}
-		seen[p.Apid()], stats[p.Apid()] = p, cz
+		if other, ok := seen[p.Apid()]; ok {
+			if diff := p.Missing(other); diff > 0 {
+				cz.Missing += uint64(diff)
+			}
+		} else {
+		}
+		seen[p.Apid()], stats[k] = p, cz
 	}
 	if len(stats) == 0 {
 		return nil
@@ -155,20 +171,49 @@ func runCount(cmd *cli.Command, args []string) error {
 		linewriter.WithSeparator([]byte("|")),
 	}
 	line := linewriter.NewWriter(1024, options...)
-	sort.Slice(apids, func(i, j int) bool { return apids[i] < apids[j] })
-	for i := 0; i < len(apids); i++ {
-		id := apids[i]
 
-		line.AppendUint(uint64(id), 6, 0)
-		cz := stats[id]
-		line.AppendUint(cz.Count, 6, 0)
-		line.AppendUint(cz.Missing, 6, 0)
-		line.AppendUint(cz.Size, 6, 0)
+	ks := keyset(stats)
+	for i := 0; i < len(ks); i++ {
+		k := ks[i]
+		line.AppendUint(uint64(k.Pid), 6, linewriter.AlignLeft)
+		if k.Sid > 0 {
+			line.AppendUint(uint64(k.Sid), 6, linewriter.AlignLeft)
+		}
+
+		cz := stats[k]
+		line.AppendUint(cz.Count, 8, linewriter.AlignRight)
+		line.AppendUint(cz.Missing, 8, linewriter.AlignRight)
+		line.AppendUint(cz.Size>>10, 8, linewriter.AlignRight)
+		line.AppendUint(cz.First, 8, linewriter.AlignRight)
+		line.AppendTime(cz.StartTime, rt.TimeFormat, linewriter.AlignRight)
+		line.AppendUint(cz.Last, 8, linewriter.AlignRight)
+		line.AppendTime(cz.EndTime, rt.TimeFormat, linewriter.AlignRight)
 
 		os.Stdout.Write(append(line.Bytes(), '\n'))
 		line.Reset()
 	}
 	return nil
+}
+
+func keyset(stats map[key]rt.Coze) []key {
+	var ks []key
+	for k := range stats {
+		ks = append(ks, k)
+	}
+	sort.Slice(ks, func(i, j int) bool { return ks[i].Pid < ks[j].Pid })
+	return ks
+}
+
+func byApid(p pathtm.Packet) key {
+	return key{Pid: p.CCSDSHeader.Apid()}
+}
+
+func bySource(p pathtm.Packet) key {
+	k := key {
+		Pid: p.CCSDSHeader.Apid(),
+		Sid: p.ESAHeader.Sid,
+	}
+	return k
 }
 
 func runDiff(cmd *cli.Command, args []string) error {

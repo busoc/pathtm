@@ -115,6 +115,14 @@ type Packet struct {
 	Sum  uint32
 }
 
+func (p Packet) Missing(other Packet) int {
+	if p.Apid() != other.Apid() {
+		return -1
+	}
+	diff := (p.Sequence() - other.Sequence()) & 0x3FFF
+	return int(diff-1)
+}
+
 func (p Packet) Marshal() ([]byte, error) {
 	if len(p.Data) == 0 {
 		return nil, ErrEmpty
