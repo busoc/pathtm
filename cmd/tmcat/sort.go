@@ -33,8 +33,7 @@ func runDispatch(cmd *cli.Command, args []string) error {
 
 	var skipped, size int
 	for i := 1; ; i++ {
-		p, err := d.Decode(true)
-		switch err {
+		switch p, err := d.Decode(true); err {
 		case nil:
 			t := p.Timestamp().Truncate(rt.Five)
 			w, ok := ws[t]
@@ -45,7 +44,7 @@ func runDispatch(cmd *cli.Command, args []string) error {
 					i--
 					continue
 				}
-				wc, err := os.Create(file)
+				wc, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 				if err != nil {
 					return err
 				}
@@ -102,8 +101,7 @@ func runSort(cmd *cli.Command, args []string) error {
 
 	var skipped, size int
 	for i := 1; ; i++ {
-		p, err := d.Decode(true)
-		switch err {
+		switch p, err := d.Decode(true); err {
 		case nil:
 			buf, err := p.Marshal()
 			if err != nil {
