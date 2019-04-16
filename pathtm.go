@@ -115,6 +115,10 @@ type Packet struct {
 	Sum  uint32
 }
 
+func (p Packet) Timestamp() time.Time {
+	return p.ESAHeader.Timestamp()
+}
+
 func (p Packet) Missing(other Packet) int {
 	if p.Apid() != other.Apid() {
 		return -1
@@ -232,7 +236,8 @@ type PTHHeader struct {
 }
 
 func (p PTHHeader) Timestamp() time.Time {
-	return timutil.Join5(p.Coarse, p.Fine)
+	t := timutil.Join5(p.Coarse, p.Fine)
+	return timutil.GPSTime(t, false)
 }
 
 type CCSDSHeader struct {
