@@ -210,10 +210,13 @@ type KeyFunc func(pathtm.Packet) key
 
 func byApid(d time.Duration) KeyFunc {
 	f := func(p pathtm.Packet) key {
-		return key{
+		k := key{
 			Pid:  p.CCSDSHeader.Apid(),
-			When: p.Timestamp().Truncate(d),
 		}
+		if d >= rt.Five {
+			k.When = p.Timestamp().Truncate(d)
+		}
+		return k
 	}
 	return f
 }
@@ -265,7 +268,12 @@ func keyset(stats map[key]rt.Coze) []key {
 	for k := range stats {
 		ks = append(ks, k)
 	}
-	sort.Slice(ks, func(i, j int) bool { return ks[i].Pid < ks[j].Pid })
+	sort.Slice(ks, func(i, j int) bool {
+		if ks[i].Pid == ks[j].Pid {
+			return ks[i].When.Before(ks[j].When)
+		}
+		return ks[i].Pid < ks[j].Pid
+	})
 	return ks
 }
 
