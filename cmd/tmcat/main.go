@@ -38,11 +38,11 @@ var commands = []*cli.Command{
 	},
 	{
 		Usage: "digest <file...>",
-		Short: "",
+		Short: "print CCSDS headers and packet hash",
 		Run:   runDigest,
 	},
 	{
-		Usage: "sort [-p apid] [-d duration] [-c count] [-s size] [-n prefix] <datadir> <file,...>",
+		Usage: "sort [-p apid] [-d duration] [-c count] [-s size] [-n prefix] <datadir> <file...>",
 		Short: "",
 		Run:   runSort,
 	},
@@ -52,14 +52,14 @@ var commands = []*cli.Command{
 		Run:   runDispatch,
 	},
 	{
-		Usage: "merge",
+		Usage: "merge [-p apid] <final> <file...>",
 		Short: "",
 		Run:   runMerge,
 	},
 	{
 		Usage: "extract [-r raw] [-m mdb] [-p apid] <file...>",
 		Short: "extract parameters from packets",
-		Run:   nil,
+		Run:   runExtract,
 	},
 }
 
