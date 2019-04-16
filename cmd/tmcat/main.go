@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"time"
 
 	"github.com/busoc/pathtm"
 	"github.com/busoc/rt"
@@ -116,9 +117,47 @@ type key struct {
 	Sid uint32
 }
 
+func countPackets(d *pathtm.Decoder, period time.Duration, byFunc func(pathtm.Packet) key) (map[key]rt.Coze, error) {
+	stats := make(map[key]rt.Coze)
+	seen := make(map[uint16]pathtm.Packet)
+
+	var stamp time.Time
+	for {
+		p, err := d.Decode(false)
+		if err != nil {
+			return stats, err
+		}
+
+		k := byFunc(p)
+		cz := stats[k]
+		cz.Count++
+		cz.Size += uint64(p.CCSDSHeader.Length)
+
+		cz.Last, cz.EndTime = uint64(p.Sequence()), p.ESAHeader.Timestamp()
+		if cz.StartTime.IsZero() {
+			cz.First, cz.StartTime = cz.Last, cz.EndTime
+		}
+
+		if other, ok := seen[p.Apid()]; ok {
+			if diff := p.Missing(other); diff > 0 {
+				cz.Missing += uint64(diff)
+			}
+		}
+		seen[p.Apid()], stats[k] = p, cz
+		if t := cz.EndTime; stamp.IsZero() {
+			stamp = t
+		} else {
+			if t.Sub(stamp) >= period {
+				break
+			}
+		}
+	}
+	return stats, nil
+}
+
 func runCount(cmd *cli.Command, args []string) error {
-	// daily := cmd.Flag.Bool("d", false, "produces a daily count")
-	// apid := cmd.Flag.Int("p", 0, "count packets only by apid")
+	apid := cmd.Flag.Int("p", 0, "count packets only by apid")
+	interval := cmd.Flag.Duration("i", 0, "")
 	csv := cmd.Flag.Bool("c", false, "csv")
 	by := cmd.Flag.String("b", "", "count packets by")
 	if err := cmd.Flag.Parse(args); err != nil {
@@ -138,37 +177,8 @@ func runCount(cmd *cli.Command, args []string) error {
 		return err
 	}
 	defer mr.Close()
-	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(0))
+	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
 
-	stats := make(map[key]rt.Coze)
-	seen := make(map[uint16]pathtm.Packet)
-	for {
-		p, err := d.Decode(false)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return err
-		}
-		k := byFunc(p)
-		cz := stats[k]
-		cz.Count++
-		cz.Size += uint64(p.CCSDSHeader.Length)
-		cz.Last, cz.EndTime = uint64(p.Sequence()), p.ESAHeader.Timestamp()
-		if cz.StartTime.IsZero() {
-			cz.First, cz.StartTime = cz.Last, cz.EndTime
-		}
-		if other, ok := seen[p.Apid()]; ok {
-			if diff := p.Missing(other); diff > 0 {
-				cz.Missing += uint64(diff)
-			}
-		} else {
-		}
-		seen[p.Apid()], stats[k] = p, cz
-	}
-	if len(stats) == 0 {
-		return nil
-	}
 	var options []linewriter.Option
 	if *csv {
 		options = append(options, linewriter.AsCSV(true))
@@ -179,26 +189,36 @@ func runCount(cmd *cli.Command, args []string) error {
 		}
 	}
 	line := linewriter.NewWriter(1024, options...)
+	for {
+		stats, err := countPackets(d, *interval, byFunc)
+		ks := keyset(stats)
+		for i := 0; i < len(ks); i++ {
+			k := ks[i]
+			line.AppendUint(uint64(k.Pid), 6, linewriter.AlignLeft)
+			if k.Sid > 0 {
+				line.AppendUint(uint64(k.Sid), 6, linewriter.AlignLeft)
+			}
 
-	ks := keyset(stats)
-	for i := 0; i < len(ks); i++ {
-		k := ks[i]
-		line.AppendUint(uint64(k.Pid), 6, linewriter.AlignLeft)
-		if k.Sid > 0 {
-			line.AppendUint(uint64(k.Sid), 6, linewriter.AlignLeft)
+			cz := stats[k]
+			line.AppendUint(cz.Count, 8, linewriter.AlignRight)
+			if *by == "" || *by == "apid" {
+				line.AppendUint(cz.Missing, 8, linewriter.AlignRight)
+			}
+			line.AppendSize(int64(cz.Size), 8, linewriter.AlignRight)
+			line.AppendUint(cz.First, 8, linewriter.AlignRight)
+			line.AppendTime(cz.StartTime, rt.TimeFormat, linewriter.AlignRight)
+			line.AppendUint(cz.Last, 8, linewriter.AlignRight)
+			line.AppendTime(cz.EndTime, rt.TimeFormat, linewriter.AlignRight)
+
+			os.Stdout.Write(append(line.Bytes(), '\n'))
+			line.Reset()
 		}
-
-		cz := stats[k]
-		line.AppendUint(cz.Count, 8, linewriter.AlignRight)
-		line.AppendUint(cz.Missing, 8, linewriter.AlignRight)
-		line.AppendSize(int64(cz.Size), 8, linewriter.AlignRight)
-		line.AppendUint(cz.First, 8, linewriter.AlignRight)
-		line.AppendTime(cz.StartTime, rt.TimeFormat, linewriter.AlignRight)
-		line.AppendUint(cz.Last, 8, linewriter.AlignRight)
-		line.AppendTime(cz.EndTime, rt.TimeFormat, linewriter.AlignRight)
-
-		os.Stdout.Write(append(line.Bytes(), '\n'))
-		line.Reset()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
 	}
 	return nil
 }
