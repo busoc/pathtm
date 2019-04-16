@@ -37,7 +37,7 @@ var commands = []*cli.Command{
 		Run:   runCount,
 	},
 	{
-		Usage: "sort [-p apid] [-d datadir] <file>",
+		Usage: "sort [-p apid] [-d duration] [-c count] [-s size] [-n prefix] <datadir> <file,...>",
 		Short: "",
 		Run:   runSort,
 	},

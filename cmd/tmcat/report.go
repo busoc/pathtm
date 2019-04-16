@@ -28,30 +28,29 @@ func runList(cmd *cli.Command, args []string) error {
 
 	line := whichLine(*csv)
 	for {
-		p, err := d.Decode(false)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
+
+		switch p, err := d.Decode(false); err {
+		case nil:
+			ft := p.CCSDSHeader.Segmentation()
+			pt := p.ESAHeader.PacketType()
+
+			line.AppendTime(p.Timestamp(), rt.TimeFormat, 0)
+			line.AppendTime(p.PTHHeader.Timestamp(), rt.TimeFormat, 0)
+			line.AppendUint(uint64(p.Sequence()), 6, linewriter.AlignRight)
+			line.AppendString(ft.String(), 16, linewriter.AlignRight)
+			line.AppendUint(uint64(p.Apid()), 4, linewriter.AlignRight)
+			line.AppendUint(uint64(p.Len()), 6, linewriter.AlignRight)
+			line.AppendString(pt.String(), 16, linewriter.AlignRight)
+			line.AppendUint(uint64(p.Sid), 8, linewriter.AlignRight)
+
+			os.Stdout.Write(append(line.Bytes(), '\n'))
+			line.Reset()
+		case io.EOF:
+			return nil
+		default:
 			return err
 		}
-
-		ft := p.CCSDSHeader.Segmentation()
-		pt := p.ESAHeader.PacketType()
-
-		line.AppendTime(p.Timestamp(), rt.TimeFormat, 0)
-		line.AppendTime(p.PTHHeader.Timestamp(), rt.TimeFormat, 0)
-		line.AppendUint(uint64(p.Sequence()), 6, linewriter.AlignRight)
-		line.AppendString(ft.String(), 16, linewriter.AlignRight)
-		line.AppendUint(uint64(p.Apid()), 4, linewriter.AlignRight)
-		line.AppendUint(uint64(p.Len()), 6, linewriter.AlignRight)
-		line.AppendString(pt.String(), 16, linewriter.AlignRight)
-		line.AppendUint(uint64(p.Sid), 8, linewriter.AlignRight)
-
-		os.Stdout.Write(append(line.Bytes(), '\n'))
-		line.Reset()
 	}
-	return nil
 }
 
 func runCount(cmd *cli.Command, args []string) error {
