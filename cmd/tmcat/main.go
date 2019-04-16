@@ -48,6 +48,16 @@ var commands = []*cli.Command{
 		Short: "",
 		Run:   runSort,
 	},
+	{
+		Usage: "dispatch [-p apid] [-d datadir] <file>",
+		Short: "",
+		Run:   runDispatch,
+	},
+	{
+		Usage: "merge",
+		Short: "",
+		Run:   nil,
+	},
 }
 
 func main() {
@@ -211,7 +221,7 @@ type KeyFunc func(pathtm.Packet) key
 func byApid(d time.Duration) KeyFunc {
 	f := func(p pathtm.Packet) key {
 		k := key{
-			Pid:  p.CCSDSHeader.Apid(),
+			Pid: p.CCSDSHeader.Apid(),
 		}
 		if d >= rt.Five {
 			k.When = p.Timestamp().Truncate(d)
