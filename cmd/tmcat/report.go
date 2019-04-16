@@ -227,16 +227,3 @@ func keyset(stats map[key]rt.Coze) []key {
 	})
 	return ks
 }
-
-func whichLine(csv bool) *linewriter.Writer {
-	var options []linewriter.Option
-	if csv {
-		options = append(options, linewriter.AsCSV(true))
-	} else {
-		options = []linewriter.Option{
-			linewriter.WithPadding([]byte(" ")),
-			linewriter.WithSeparator([]byte("|")),
-		}
-	}
-	return linewriter.NewWriter(1024, options...)
-}

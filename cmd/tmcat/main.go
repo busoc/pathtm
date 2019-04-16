@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/midbel/cli"
+	"github.com/midbel/linewriter"
 )
 
 const helpText = `{{.Name}} scan the HRDP archive to consolidate the USOC HRDP archive
@@ -67,4 +68,17 @@ func main() {
 	if err := cli.Run(commands, cli.Usage("tmcat", helpText, commands), nil); err != nil {
 		log.Fatalln(err)
 	}
+}
+
+func whichLine(csv bool) *linewriter.Writer {
+	var options []linewriter.Option
+	if csv {
+		options = append(options, linewriter.AsCSV(true))
+	} else {
+		options = []linewriter.Option{
+			linewriter.WithPadding([]byte(" ")),
+			linewriter.WithSeparator([]byte("|")),
+		}
+	}
+	return linewriter.NewWriter(1024, options...)
 }

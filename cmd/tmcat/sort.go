@@ -31,42 +31,36 @@ func runDispatch(cmd *cli.Command, args []string) error {
 	d := pathtm.NewDecoder(rt.NewReader(r), pathtm.WithApid(*apid))
 	ws := make(map[time.Time]io.Writer)
 
-	var skipped, size int
-	for i := 1; ; i++ {
+	c := struct {
+		Count   int
+		Skipped int
+		Size    int
+	}{}
+	for {
 		switch p, err := d.Decode(true); err {
 		case nil:
 			t := p.Timestamp().Truncate(rt.Five)
-			w, ok := ws[t]
-			if !ok {
-				file, err := rt.Path(*datadir, t)
-				if err != nil {
-					skipped++
-					i--
-					continue
-				}
-				wc, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if _, ok := ws[t]; !ok {
+				wc, err := createFile(*datadir, t)
 				if err != nil {
 					return err
 				}
 				defer wc.Close()
-				w = rt.NewWriter(wc)
+				ws[t] = rt.NewWriter(wc)
 			}
 			buf, err := p.Marshal()
 			if err != nil {
-				skipped++
-				i--
+				c.Skipped++
 				continue
 			}
-			if n, err := w.Write(buf); err != nil {
-				skipped++
-				i--
-				continue
+			if n, err := ws[t].Write(buf); err != nil {
+				return err
 			} else {
-				size += n
+				c.Size += n
+				c.Count++
 			}
-			ws[t] = w
 		case io.EOF:
-			fmt.Fprintf(os.Stdout, "%d packets written (%d skipped, %dKB)\n", i-1, skipped, size>>10)
+			fmt.Fprintf(os.Stdout, "%d packets written (%d skipped, %dKB)\n", c.Count, c.Skipped, c.Size>>10)
 			return nil
 		default:
 			return err
@@ -97,28 +91,40 @@ func runSort(cmd *cli.Command, args []string) error {
 	}
 	defer w.Close()
 
+	c := struct {
+		Count   int
+		Skipped int
+		Size    int
+	}{}
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
-
-	var skipped, size int
-	for i := 1; ; i++ {
+	for {
 		switch p, err := d.Decode(true); err {
 		case nil:
 			buf, err := p.Marshal()
 			if err != nil {
-				skipped++
+				c.Skipped++
 				continue
 			}
 			if n, err := w.Write(buf); err != nil {
-				skipped++
+				c.Skipped++
 				continue
 			} else {
-				size += n
+				c.Size += n
+				c.Count++
 			}
 		case io.EOF:
-			fmt.Fprintf(os.Stdout, "%d packets written (%d skipped, %dKB)\n", i-1, skipped, size>>10)
+			fmt.Fprintf(os.Stdout, "%d packets written (%d skipped, %dKB)\n", c.Count, c.Skipped, c.Size>>10)
 			return nil
 		default:
 			return err
 		}
 	}
+}
+
+func createFile(dir string, t time.Time) (*os.File, error) {
+	file, err := rt.Path(dir, t)
+	if err != nil {
+		return nil, err
+	}
+	return os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 }
