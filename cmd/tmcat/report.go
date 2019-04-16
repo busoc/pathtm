@@ -35,12 +35,14 @@ func runDigest(cmd *cli.Command, args []string) error {
 			if err != nil {
 				return err
 			}
+			sum := xxh.Sum64(buffer[pathtm.PTHHeaderLen+pathtm.CCSDSHeaderLen:], 0)
+
 			line.AppendUint(uint64(c.Apid()), 4, linewriter.AlignRight)
 			// line.AppendUint(uint64(missing), 6, linewriter.AlignRight)
 			line.AppendUint(uint64(c.Sequence()), 6, linewriter.AlignRight)
 			line.AppendString(c.Segmentation().String(), 12, linewriter.AlignRight)
 			line.AppendUint(uint64(c.Len()), 6, linewriter.AlignRight)
-			line.AppendUint(xxh.Sum64(buffer[pathtm.PTHHeaderLen+pathtm.CCSDSHeaderLen:], 0), 16, linewriter.WithZero|linewriter.Hex)
+			line.AppendUint(sum, 16, linewriter.WithZero|linewriter.Hex)
 
 			os.Stdout.Write(append(line.Bytes(), '\n'))
 			line.Reset()

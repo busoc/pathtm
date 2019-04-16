@@ -39,7 +39,7 @@ var commands = []*cli.Command{
 	{
 		Usage: "digest <file...>",
 		Short: "",
-		Run: runDigest,
+		Run:   runDigest,
 	},
 	{
 		Usage: "sort [-p apid] [-d duration] [-c count] [-s size] [-n prefix] <datadir> <file,...>",
