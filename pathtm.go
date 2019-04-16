@@ -120,11 +120,7 @@ func (p Packet) Timestamp() time.Time {
 }
 
 func (p Packet) Missing(other Packet) int {
-	if p.Apid() != other.Apid() {
-		return -1
-	}
-	diff := (p.Sequence() - other.Sequence()) & 0x3FFF
-	return int(diff - 1)
+	return p.CCSDSHeader.Missing(other.CCSDSHeader)
 }
 
 func (p Packet) Marshal() ([]byte, error) {
@@ -244,6 +240,14 @@ type CCSDSHeader struct {
 	Pid      uint16
 	Fragment uint16
 	Length   uint16
+}
+
+func (c CCSDSHeader) Missing(other CCSDSHeader) int {
+	if c.Apid() != other.Apid() {
+		return -1
+	}
+	diff := (c.Sequence() - other.Sequence()) & 0x3FFF
+	return int(diff - 1)
 }
 
 func (c CCSDSHeader) Len() uint16 {

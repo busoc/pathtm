@@ -71,11 +71,10 @@ func Dump() *Dumper {
 func (d *Dumper) Dump(c pathtm.CCSDSHeader, digest uint64) {
 	defer d.line.Reset()
 
-	var missing uint16
+	var missing int
 	if other, ok := d.seen[c.Apid()]; ok {
-		diff := c.Sequence() - other.Sequence()
-		if diff != c.Sequence() && diff > 1 {
-			missing = diff - 1
+		if diff := c.Missing(other); diff > 0 {
+			missing = diff
 		}
 	}
 	d.seen[c.Apid()] = c

@@ -28,6 +28,8 @@ func runDigest(cmd *cli.Command, args []string) error {
 	r := bufio.NewReader(rt.NewReader(mr))
 	buffer := make([]byte, pathtm.BufferSize)
 	line := whichLine(false)
+
+	seen := make(map[uint16]pathtm.CCSDSHeader)
 	for {
 		switch _, err := r.Read(buffer); err {
 		case nil:
@@ -37,8 +39,16 @@ func runDigest(cmd *cli.Command, args []string) error {
 			}
 			sum := xxh.Sum64(buffer[pathtm.PTHHeaderLen+pathtm.CCSDSHeaderLen:], 0)
 
+			var missing int
+			if other, ok := seen[c.Apid()]; ok {
+				if diff := c.Missing(other); diff > 0 {
+					missing = diff
+				}
+			}
+			seen[c.Apid()] = c
+
 			line.AppendUint(uint64(c.Apid()), 4, linewriter.AlignRight)
-			// line.AppendUint(uint64(missing), 6, linewriter.AlignRight)
+			line.AppendUint(uint64(missing), 6, linewriter.AlignRight)
 			line.AppendUint(uint64(c.Sequence()), 6, linewriter.AlignRight)
 			line.AppendString(c.Segmentation().String(), 12, linewriter.AlignRight)
 			line.AppendUint(uint64(c.Len()), 6, linewriter.AlignRight)
