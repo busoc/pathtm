@@ -50,16 +50,15 @@ func runDispatch(cmd *cli.Command, args []string) error {
 				defer wc.Close()
 				ws[t] = rt.NewWriter(wc)
 			}
-			buf, err := p.Marshal()
-			if err != nil {
-				c.Skipped++
-				continue
-			}
-			if n, err := ws[t].Write(buf); err != nil {
-				return err
+			if buf, err := p.Marshal(); err == nil {
+				if n, err := ws[t].Write(buf); err != nil {
+					return err
+				} else {
+					c.Size += n
+					c.Count++
+				}
 			} else {
-				c.Size += n
-				c.Count++
+				c.Skipped++
 			}
 		case io.EOF:
 			fmt.Fprintf(os.Stdout, "%d packets written (%d skipped, %dKB)\n", c.Count, c.Skipped, c.Size>>10)
@@ -72,10 +71,10 @@ func runDispatch(cmd *cli.Command, args []string) error {
 
 type sorter struct {
 	Interval time.Duration
-	Prefix string
-	Apid int
-	Size int
-	Count int
+	Prefix   string
+	Apid     int
+	Size     int
+	Count    int
 
 	state struct {
 		Count   int
