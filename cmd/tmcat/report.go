@@ -13,6 +13,7 @@ import (
 	"github.com/midbel/cli"
 	"github.com/midbel/linewriter"
 	"github.com/midbel/xxh"
+	"github.com/pkg/profile"
 )
 
 func runDigest(cmd *cli.Command, args []string) error {
@@ -65,6 +66,7 @@ func runDigest(cmd *cli.Command, args []string) error {
 }
 
 func runList(cmd *cli.Command, args []string) error {
+	defer profile.Start(profile.MemProfile).Stop()
 	apid := cmd.Flag.Int("p", 0, "apid")
 	csv := cmd.Flag.Bool("c", false, "csv format")
 	if err := cmd.Flag.Parse(args); err != nil {
@@ -94,8 +96,7 @@ func runList(cmd *cli.Command, args []string) error {
 			line.AppendString(pt.String(), 16, linewriter.AlignRight)
 			line.AppendUint(uint64(p.Sid), 8, linewriter.AlignRight)
 
-			os.Stdout.Write(append(line.Bytes(), '\n'))
-			line.Reset()
+			io.Copy(os.Stdout, line)
 		case io.EOF:
 			return nil
 		default:
@@ -151,8 +152,7 @@ func runCount(cmd *cli.Command, args []string) error {
 		line.AppendUint(cz.Last, 8, linewriter.AlignRight)
 		line.AppendTime(cz.EndTime, rt.TimeFormat, linewriter.AlignRight)
 
-		os.Stdout.Write(append(line.Bytes(), '\n'))
-		line.Reset()
+		io.Copy(os.Stdout, line)
 	}
 	return nil
 }
@@ -192,8 +192,7 @@ func runDiff(cmd *cli.Command, args []string) error {
 				line.AppendUint(uint64(diff), 6, linewriter.AlignRight)
 				line.AppendDuration(td.Sub(fd), 12, linewriter.AlignRight)
 
-				os.Stdout.Write(append(line.Bytes(), '\n'))
-				line.Reset()
+				io.Copy(os.Stdout, line)
 			}
 		}
 		stats[p.Apid()] = p
