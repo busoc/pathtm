@@ -3,10 +3,8 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -21,81 +19,13 @@ func runMerge(cmd *cli.Command, args []string) error {
 		return err
 	}
 	files := cmd.Flag.Args()
-	rc, err := copyFiles(files[1:])
-	if err != nil {
-		return err
-	}
-	defer rc.Close()
-
 	w, err := os.Create(cmd.Flag.Arg(0))
 	if err != nil {
 		return err
 	}
 	defer w.Close()
 
-	_, err = io.Copy(w, rc)
-	return err
-}
-
-type indexer struct {
-	*os.File
-	packets []offset
-	written int64
-}
-
-type offset struct {
-	Sequence uint16
-	Apid     uint16
-	Time     time.Time
-	Position int64
-}
-
-func copyFiles(files []string) (io.ReadCloser, error) {
-	rs := make([]io.Reader, len(files))
-	for i := 0; i < len(files); i++ {
-		r, err := os.Open(files[i])
-		if err != nil {
-			return nil, err
-		}
-		defer r.Close()
-		rs[i] = r
-	}
-	ix, err := Index()
-	if err != nil {
-		return nil, err
-	}
-	_, err = io.Copy(ix, io.MultiReader(rs...))
-	if err == nil {
-		_, err = ix.Seek(0, io.SeekStart)
-	}
-	return ix, err
-}
-
-func Index() (*os.File, error) {
-	w, err := ioutil.TempFile("", "merged_*.dat")
-	if err != nil {
-		return nil, err
-	}
-	return &indexer{File: w}, nil
-}
-
-func (x *indexer) Seek(offset int64, whence int) (int64, error) {
-	sort.Slice(x.packets, func(i, j int) bool {
-		return x.packets[i].Time.Before(x.packets[j].Time)
-	})
-	return x.File.Seek(offset, whence)
-}
-
-func (i *indexer) Write(bs []byte) (int, error) {
-	p, err := pathtm.DecodePacket(bs, false)
-	if err != nil {
-		return 0, err
-	}
-	return len(bs), nil
-}
-
-func (i *indexer) Read(bs []byte) (int, error) {
-	return len(bs), nil
+	return pathtm.Merge(w, files[1:])
 }
 
 func runDispatch(cmd *cli.Command, args []string) error {
