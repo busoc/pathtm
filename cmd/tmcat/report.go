@@ -27,7 +27,7 @@ func runDigest(cmd *cli.Command, args []string) error {
 
 	r := bufio.NewReader(rt.NewReader(mr))
 	buffer := make([]byte, pathtm.BufferSize)
-	line := whichLine(false)
+	line := Line(false)
 
 	seen := make(map[uint16]pathtm.CCSDSHeader)
 	for {
@@ -77,7 +77,7 @@ func runList(cmd *cli.Command, args []string) error {
 	defer mr.Close()
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
 
-	line := whichLine(*csv)
+	line := Line(*csv)
 	for {
 
 		switch p, err := d.Decode(false); err {
@@ -128,7 +128,7 @@ func runCount(cmd *cli.Command, args []string) error {
 	defer mr.Close()
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
 
-	line := whichLine(*csv)
+	line := Line(*csv)
 	stats, err := countPackets(d, groupby)
 	if err != nil {
 		return err
@@ -171,7 +171,7 @@ func runDiff(cmd *cli.Command, args []string) error {
 	defer mr.Close()
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
 
-	line := whichLine(*csv)
+	line := Line(*csv)
 	stats := make(map[uint16]pathtm.Packet)
 	for {
 		p, err := d.Decode(false)

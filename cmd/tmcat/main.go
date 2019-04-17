@@ -42,9 +42,9 @@ var commands = []*cli.Command{
 		Run:   runDigest,
 	},
 	{
-		Usage: "sort [-p apid] [-d duration] [-c count] [-s size] [-n prefix] <datadir> <file...>",
+		Usage: "take [-p apid] [-d duration] [-c count] [-s size] [-n prefix] <datadir> <file...>",
 		Short: "",
-		Run:   runSort,
+		Run:   runTake,
 	},
 	{
 		Usage: "dispatch [-p apid] [-d datadir] <file>",
@@ -52,14 +52,9 @@ var commands = []*cli.Command{
 		Run:   runDispatch,
 	},
 	{
-		Usage: "merge [-p apid] <final> <file...>",
-		Short: "",
+		Usage: "merge <final> <file...>",
+		Short: "merge and reorder packets from multiple files",
 		Run:   runMerge,
-	},
-	{
-		Usage: "extract [-r raw] [-m mdb] [-p apid] <file...>",
-		Short: "extract parameters from packets",
-		Run:   runExtract,
 	},
 }
 
@@ -75,7 +70,7 @@ func main() {
 	}
 }
 
-func whichLine(csv bool) *linewriter.Writer {
+func Line(csv bool) *linewriter.Writer {
 	var options []linewriter.Option
 	if csv {
 		options = append(options, linewriter.AsCSV(true))
