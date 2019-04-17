@@ -321,6 +321,10 @@ func encodeCCSDS(c CCSDSHeader) []byte {
 	return buf
 }
 
+func DecodeESA(body []byte) (ESAHeader, error) {
+	return decodeESA(body)
+}
+
 func decodeESA(body []byte) (ESAHeader, error) {
 	var h ESAHeader
 	if len(body) < ESAHeaderLen {

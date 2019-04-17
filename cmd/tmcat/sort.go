@@ -25,7 +25,23 @@ func runMerge(cmd *cli.Command, args []string) error {
 	}
 	defer w.Close()
 
-	return pathtm.Merge(w, files[1:])
+	return rt.MergeFiles(files[1:], w, func(bs []byte) (rt.Offset, error) {
+		var o rt.Offset
+		if len(bs) < pathtm.PTHHeaderLen + pathtm.ESAHeaderLen {
+			return o, rt.ErrSkip
+		}
+		if c, err := pathtm.DecodeCCSDS(bs[pathtm.PTHHeaderLen:]); err != nil {
+			return o, err
+		} else {
+			o.Pid, o.Sequence = uint(c.Apid()), uint(c.Sequence())
+		}
+		if e, err := pathtm.DecodeESA(bs[pathtm.PTHHeaderLen+pathtm.CCSDSHeaderLen:]); err != nil {
+			return o, err
+		} else {
+			o.Time = e.Timestamp()
+		}
+		return o, nil
+	})
 }
 
 func runDispatch(cmd *cli.Command, args []string) error {
