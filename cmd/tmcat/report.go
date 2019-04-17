@@ -13,7 +13,6 @@ import (
 	"github.com/midbel/cli"
 	"github.com/midbel/linewriter"
 	"github.com/midbel/xxh"
-	"github.com/pkg/profile"
 )
 
 func runDigest(cmd *cli.Command, args []string) error {
@@ -66,7 +65,6 @@ func runDigest(cmd *cli.Command, args []string) error {
 }
 
 func runList(cmd *cli.Command, args []string) error {
-	defer profile.Start(profile.MemProfile).Stop()
 	apid := cmd.Flag.Int("p", 0, "apid")
 	csv := cmd.Flag.Bool("c", false, "csv format")
 	if err := cmd.Flag.Parse(args); err != nil {
