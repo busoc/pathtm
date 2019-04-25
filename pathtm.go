@@ -9,7 +9,10 @@ import (
 	"github.com/busoc/timutil"
 )
 
-var ErrEmpty = errors.New("no data")
+var (
+	ErrEmpty   = errors.New("no data")
+	ErrVersion = errors.New("unknown CCSDS version")
+)
 
 const BufferSize = 4 << 10
 
@@ -306,7 +309,7 @@ func decodeCCSDS(body []byte) (CCSDSHeader, error) {
 
 	h.Pid = binary.BigEndian.Uint16(body)
 	if v := h.Pid >> 13; v != 0 {
-		return 0, fmt.Errorf("unsupported CCSDS version (%d)", v)
+		return h, ErrVersion
 	}
 	h.Fragment = binary.BigEndian.Uint16(body[2:])
 	h.Length = binary.BigEndian.Uint16(body[4:])

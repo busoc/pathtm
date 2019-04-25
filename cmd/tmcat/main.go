@@ -47,11 +47,6 @@ var commands = []*cli.Command{
 		Run:   runTake,
 	},
 	{
-		Usage: "dispatch [-p apid] [-d datadir] <file>",
-		Short: "",
-		Run:   runDispatch,
-	},
-	{
 		Usage: "merge <final> <file...>",
 		Short: "merge and reorder packets from multiple files",
 		Run:   runMerge,

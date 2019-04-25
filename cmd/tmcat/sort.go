@@ -27,7 +27,7 @@ func runMerge(cmd *cli.Command, args []string) error {
 
 	return rt.MergeFiles(files[1:], w, func(bs []byte) (rt.Offset, error) {
 		var o rt.Offset
-		if len(bs) < pathtm.PTHHeaderLen + pathtm.ESAHeaderLen {
+		if len(bs) < pathtm.PTHHeaderLen+pathtm.ESAHeaderLen {
 			return o, rt.ErrSkip
 		}
 		if c, err := pathtm.DecodeCCSDS(bs[pathtm.PTHHeaderLen:]); err != nil {
@@ -44,55 +44,29 @@ func runMerge(cmd *cli.Command, args []string) error {
 	})
 }
 
-func runDispatch(cmd *cli.Command, args []string) error {
-	datadir := cmd.Flag.String("d", "", "datadir")
-	apid := cmd.Flag.Int("p", 0, "apid")
+func runTake(cmd *cli.Command, args []string) error {
+	var t taker
+
+	cmd.Flag.DurationVar(&t.Interval, "d", 0, "")
+	cmd.Flag.StringVar(&t.Prefix, "n", "", "")
+	cmd.Flag.IntVar(&t.Apid, "p", 0, "apid")
+	cmd.Flag.IntVar(&t.Size, "s", 0, "size")
+	cmd.Flag.IntVar(&t.Count, "c", 0, "count")
+
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
 	}
-	r, err := os.Open(cmd.Flag.Arg(0))
-	if err != nil {
-		return err
-	}
-	defer r.Close()
 
-	d := pathtm.NewDecoder(rt.NewReader(r), pathtm.WithApid(*apid))
-	ws := make(map[time.Time]io.Writer)
-
-	c := struct {
-		Count   int
-		Skipped int
-		Size    int
-	}{}
-	for {
-		switch p, err := d.Decode(true); err {
-		case nil:
-			t := p.Timestamp().Truncate(rt.Five)
-			if _, ok := ws[t]; !ok {
-				wc, err := createFile(*datadir, t)
-				if err != nil {
-					return err
-				}
-				defer wc.Close()
-				ws[t] = rt.NewWriter(wc)
-			}
-			if buf, err := p.Marshal(); err == nil {
-				if n, err := ws[t].Write(buf); err != nil {
-					return err
-				} else {
-					c.Size += n
-					c.Count++
-				}
-			} else {
-				c.Skipped++
-			}
-		case io.EOF:
-			fmt.Fprintf(os.Stdout, "%d packets written (%d skipped, %dKB)\n", c.Count, c.Skipped, c.Size>>10)
-			return nil
-		default:
-			return err
-		}
+	dirs := make([]string, cmd.Flag.NArg()-1)
+	for i := 1; i < cmd.Flag.NArg(); i++ {
+		dirs[i-1] = cmd.Flag.Arg(i)
 	}
+
+	err := t.Sort(cmd.Flag.Arg(0), dirs)
+	if err == nil {
+		fmt.Fprintf(os.Stdout, "%d packets written (%d skipped, %dKB)\n", t.state.Count, t.state.Skipped, t.state.Size>>10)
+	}
+	return err
 }
 
 type taker struct {
@@ -172,37 +146,4 @@ func (t *taker) Open(dir string) roll.NextFunc {
 		wc, err := os.Create(filepath.Join(dir, file))
 		return wc, nil, err
 	}
-}
-
-func runTake(cmd *cli.Command, args []string) error {
-	var t taker
-
-	cmd.Flag.DurationVar(&t.Interval, "d", 0, "")
-	cmd.Flag.StringVar(&t.Prefix, "n", "", "")
-	cmd.Flag.IntVar(&t.Apid, "p", 0, "apid")
-	cmd.Flag.IntVar(&t.Size, "s", 0, "size")
-	cmd.Flag.IntVar(&t.Count, "c", 0, "count")
-
-	if err := cmd.Flag.Parse(args); err != nil {
-		return err
-	}
-
-	dirs := make([]string, cmd.Flag.NArg()-1)
-	for i := 1; i < cmd.Flag.NArg(); i++ {
-		dirs[i-1] = cmd.Flag.Arg(i)
-	}
-
-	err := t.Sort(cmd.Flag.Arg(0), dirs)
-	if err == nil {
-		fmt.Fprintf(os.Stdout, "%d packets written (%d skipped, %dKB)\n", t.state.Count, t.state.Skipped, t.state.Size>>10)
-	}
-	return err
-}
-
-func createFile(dir string, t time.Time) (*os.File, error) {
-	file, err := rt.Path(dir, t)
-	if err != nil {
-		return nil, err
-	}
-	return os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 }
