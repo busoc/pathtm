@@ -123,6 +123,9 @@ func (p Packet) Timestamp() time.Time {
 }
 
 func (p Packet) Missing(other Packet) int {
+	if other.Timestamp().After(p.Timestamp()) {
+		return 0
+	}
 	return p.CCSDSHeader.Missing(other.CCSDSHeader)
 }
 
