@@ -84,14 +84,19 @@ type taker struct {
 	}
 }
 
-func (t *taker) Sort(datadir string, dirs []string) error {
+func (t *taker) Sort(file string, dirs []string) error {
 	mr, err := rt.Browse(dirs, true)
 	if err != nil {
 		return err
 	}
 	defer mr.Close()
 
-	wc, err := roll.Roll(t.Open(datadir), roll.WithThreshold(t.Size, t.Count))
+	var wc io.WriteCloser
+	if t.Interval > 0 {
+		wc, err = roll.Roll(t.Open(file), roll.WithThreshold(t.Size, t.Count))
+	} else {
+		wc, err = os.Create(file)
+	}
 	if err != nil {
 		return err
 	}
@@ -104,7 +109,9 @@ func (t *taker) Sort(datadir string, dirs []string) error {
 			if t.Interval >= rt.Five {
 				w := p.Timestamp()
 				if !t.state.Stamp.IsZero() && w.Sub(t.state.Stamp) >= t.Interval {
-					wc.Rotate()
+					if r, ok := wc.(*roll.Roller); ok {
+						r.Rotate()
+					}
 				}
 				if t.state.Stamp.IsZero() || w.Sub(t.state.Stamp) >= t.Interval {
 					t.state.Stamp = w
