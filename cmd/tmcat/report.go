@@ -26,7 +26,11 @@ func runList(cmd *cli.Command, args []string) error {
 	defer mr.Close()
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
 
-	line := Line(*csv)
+	return dumpList(d, os.Stdout, *csv)
+}
+
+func dumpList(d *pathtm.Decoder, w io.Writer, csv bool) error {
+	line := Line(csv)
 	seen := make(map[uint16]pathtm.Packet)
 	for {
 
@@ -51,7 +55,7 @@ func runList(cmd *cli.Command, args []string) error {
 			line.AppendString(pt.String(), 16, linewriter.AlignRight)
 			line.AppendUint(uint64(p.Sid), 8, linewriter.AlignRight)
 
-			io.Copy(os.Stdout, line)
+			io.Copy(w, line)
 		case io.EOF:
 			return nil
 		default:

@@ -22,6 +22,11 @@ Use {{.Name}} [command] -h for more information about its usage.
 
 var commands = []*cli.Command{
 	{
+		Usage: "server <host> <directory>",
+		Short: "",
+		Run:   runServer,
+	},
+	{
 		Usage: "list [-c csv] [-p apid] <file...>",
 		Short: "print packet headers found in file(s)",
 		Run:   runList,
