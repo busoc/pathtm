@@ -63,7 +63,7 @@ func dumpList(d *pathtm.Decoder, w io.Writer, size int, csv bool) error {
 			line.AppendUint(uint64(p.Sid), 8, linewriter.AlignRight)
 
 			io.Copy(w, line)
-		case io.EOF:
+		case io.EOF, rt.ErrInvalid:
 			return nil
 		default:
 			return err
@@ -144,30 +144,29 @@ func runDiff(cmd *cli.Command, args []string) error {
 	line := Line(*csv)
 	stats := make(map[uint16]pathtm.Packet)
 	for {
-		p, err := d.Decode(false)
-		if err != nil {
-			if err == io.EOF {
-				break
+		switch p, err := d.Decode(false); err {
+		case nil:
+			if other, ok := stats[p.Apid()]; ok {
+				fd, td := other.Timestamp(), p.Timestamp()
+				if diff := p.Missing(other); diff > 0 && (*duration <= 0 || td.Sub(fd) >= *duration) {
+					line.AppendUint(uint64(p.Apid()), 4, linewriter.AlignRight)
+					line.AppendTime(fd, rt.TimeFormat, linewriter.AlignRight)
+					line.AppendTime(td, rt.TimeFormat, linewriter.AlignRight)
+					line.AppendUint(uint64(other.Sequence()), 6, linewriter.AlignRight)
+					line.AppendUint(uint64(p.Sequence()), 6, linewriter.AlignRight)
+					line.AppendUint(uint64(diff), 6, linewriter.AlignRight)
+					line.AppendDuration(td.Sub(fd), 12, linewriter.AlignRight)
+
+					io.Copy(os.Stdout, line)
+				}
 			}
+			stats[p.Apid()] = p
+		case io.EOF, rt.ErrInvalid:
+			return nil
+		default:
 			return err
 		}
-		if other, ok := stats[p.Apid()]; ok {
-			fd, td := other.Timestamp(), p.Timestamp()
-			if diff := p.Missing(other); diff > 0 && (*duration <= 0 || td.Sub(fd) >= *duration) {
-				line.AppendUint(uint64(p.Apid()), 4, linewriter.AlignRight)
-				line.AppendTime(fd, rt.TimeFormat, linewriter.AlignRight)
-				line.AppendTime(td, rt.TimeFormat, linewriter.AlignRight)
-				line.AppendUint(uint64(other.Sequence()), 6, linewriter.AlignRight)
-				line.AppendUint(uint64(p.Sequence()), 6, linewriter.AlignRight)
-				line.AppendUint(uint64(diff), 6, linewriter.AlignRight)
-				line.AppendDuration(td.Sub(fd), 12, linewriter.AlignRight)
-
-				io.Copy(os.Stdout, line)
-			}
-		}
-		stats[p.Apid()] = p
 	}
-	return nil
 }
 
 type key struct {
@@ -206,31 +205,30 @@ func countPackets(d *pathtm.Decoder, groupby KeyFunc) (map[key]rt.Coze, error) {
 	seen := make(map[uint16]pathtm.Packet)
 
 	for {
-		p, err := d.Decode(false)
-		if err != nil {
-			if err == io.EOF {
-				break
+		switch p, err := d.Decode(false); err {
+		case nil:
+			k := groupby(p)
+			cz := stats[k]
+			cz.Count++
+			cz.Size += uint64(p.CCSDSHeader.Length)
+
+			cz.Last, cz.EndTime = uint64(p.Sequence()), p.Timestamp()
+			if cz.StartTime.IsZero() {
+				cz.First, cz.StartTime = cz.Last, cz.EndTime
 			}
+
+			if other, ok := seen[p.Apid()]; ok {
+				if diff := p.Missing(other); diff > 0 {
+					cz.Missing += uint64(diff)
+				}
+			}
+			seen[p.Apid()], stats[k] = p, cz
+		case io.EOF, rt.ErrInvalid:
+			return stats, nil
+		default:
 			return nil, err
 		}
-		k := groupby(p)
-		cz := stats[k]
-		cz.Count++
-		cz.Size += uint64(p.CCSDSHeader.Length)
-
-		cz.Last, cz.EndTime = uint64(p.Sequence()), p.Timestamp()
-		if cz.StartTime.IsZero() {
-			cz.First, cz.StartTime = cz.Last, cz.EndTime
-		}
-
-		if other, ok := seen[p.Apid()]; ok {
-			if diff := p.Missing(other); diff > 0 {
-				cz.Missing += uint64(diff)
-			}
-		}
-		seen[p.Apid()], stats[k] = p, cz
 	}
-	return stats, nil
 }
 
 func keyset(stats map[key]rt.Coze) []key {
