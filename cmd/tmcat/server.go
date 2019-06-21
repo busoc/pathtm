@@ -49,7 +49,7 @@ func HandleList(datadir string) http.Handler {
 		}
 
 		d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(apid))
-		dumpList(d, w, true)
+		dumpList(d, w, 0, true)
 	}
 	return http.HandlerFunc(f)
 }

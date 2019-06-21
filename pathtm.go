@@ -249,11 +249,14 @@ type CCSDSHeader struct {
 }
 
 func (c CCSDSHeader) Missing(other CCSDSHeader) int {
-	if c.Apid() != other.Apid() {
-		return -1
+	if c.Apid() != other.Apid() || c.Sequence() < other.Sequence() {
+		return 0
 	}
 	diff := (c.Sequence() - other.Sequence()) & 0x3FFF
-	return int(diff - 1)
+	if diff > 0 {
+		diff--
+	}
+	return int(diff)
 }
 
 func (c CCSDSHeader) Len() uint16 {

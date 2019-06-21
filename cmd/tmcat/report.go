@@ -15,6 +15,7 @@ import (
 
 func runList(cmd *cli.Command, args []string) error {
 	apid := cmd.Flag.Int("p", 0, "apid")
+	hrdp := cmd.Flag.Bool("a", false, "hrdp")
 	csv := cmd.Flag.Bool("c", false, "csv format")
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
@@ -26,14 +27,17 @@ func runList(cmd *cli.Command, args []string) error {
 	defer mr.Close()
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
 
-	return dumpList(d, os.Stdout, *csv)
+	var base int
+	if *hrdp {
+		base = pathtm.PTHHeaderLen + pathtm.CCSDSHeaderLen
+	}
+	return dumpList(d, os.Stdout, base, *csv)
 }
 
-func dumpList(d *pathtm.Decoder, w io.Writer, csv bool) error {
+func dumpList(d *pathtm.Decoder, w io.Writer, size int, csv bool) error {
 	line := Line(csv)
 	seen := make(map[uint16]pathtm.Packet)
 	for {
-
 		switch p, err := d.Decode(false); err {
 		case nil:
 			ft := p.CCSDSHeader.Segmentation()
@@ -42,6 +46,9 @@ func dumpList(d *pathtm.Decoder, w io.Writer, csv bool) error {
 			var diff int
 			if other, ok := seen[p.Apid()]; ok {
 				diff = p.Missing(other)
+				if diff < 0 {
+					diff = 0
+				}
 			}
 			seen[p.Apid()] = p
 
@@ -51,7 +58,7 @@ func dumpList(d *pathtm.Decoder, w io.Writer, csv bool) error {
 			line.AppendUint(uint64(diff), 6, linewriter.AlignRight)
 			line.AppendString(ft.String(), 16, linewriter.AlignRight)
 			line.AppendUint(uint64(p.Apid()), 4, linewriter.AlignRight)
-			line.AppendUint(uint64(p.Len()), 6, linewriter.AlignRight)
+			line.AppendUint(uint64(p.Len()+uint16(size)), 6, linewriter.AlignRight)
 			line.AppendString(pt.String(), 16, linewriter.AlignRight)
 			line.AppendUint(uint64(p.Sid), 8, linewriter.AlignRight)
 
