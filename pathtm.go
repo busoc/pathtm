@@ -134,12 +134,13 @@ func (p Packet) Marshal() ([]byte, error) {
 		return nil, ErrEmpty
 	}
 	var offset int
-	buf := make([]byte, CCSDSHeaderLen+int(p.Length))
+	buf := make([]byte, PTHHeaderLen+CCSDSHeaderLen+int(p.Len()))
+	offset += copy(buf[offset:], encodePTH(p.PTHHeader))
 	offset += copy(buf[offset:], encodeCCSDS(p.CCSDSHeader))
 	if set := (p.CCSDSHeader.Pid >> 11) & 0x1; set != 0 {
 		offset += copy(buf[offset:], encodeESA(p.ESAHeader))
 	}
-	copy(buf[offset:], p.Data)
+	offset += copy(buf[offset:], p.Data)
 	return buf, nil
 }
 
@@ -152,20 +153,14 @@ type Decoder struct {
 func WithApid(apid int) func(CCSDSHeader, ESAHeader) (bool, error) {
 	i := uint16(apid)
 	return func(c CCSDSHeader, _ ESAHeader) (bool, error) {
-		if i <= 0 {
-			return true, nil
-		}
-		return (i > 0 && i == c.Apid()), nil
+		return (i <= 0 || i == c.Apid()), nil
 	}
 }
 
 func WithSid(sid int) func(CCSDSHeader, ESAHeader) (bool, error) {
 	i := uint32(sid)
 	return func(_ CCSDSHeader, e ESAHeader) (bool, error) {
-		if i <= 0 {
-			return true, nil
-		}
-		return (i > 0 && i == e.Sid), nil
+		return (i <= 0 || i == e.Sid), nil
 	}
 }
 
@@ -224,7 +219,7 @@ func decodePacket(body []byte, data bool) (p Packet, err error) {
 		offset += ESAHeaderLen
 	}
 	if data {
-		p.Data = make([]byte, int(p.CCSDSHeader.Length-ESAHeaderLen))
+		p.Data = make([]byte, int(p.CCSDSHeader.Len()-ESAHeaderLen))
 		copy(p.Data, body[offset:])
 	}
 	return
@@ -260,7 +255,7 @@ func (c CCSDSHeader) Missing(other CCSDSHeader) int {
 }
 
 func (c CCSDSHeader) Len() uint16 {
-	return c.Length - 1
+	return c.Length + 1
 }
 
 func (c CCSDSHeader) Apid() uint16 {
@@ -301,6 +296,17 @@ func decodePTH(body []byte) (PTHHeader, error) {
 	h.Fine = uint8(body[9])
 
 	return h, nil
+}
+
+func encodePTH(h PTHHeader) []byte {
+	buf := make([]byte, PTHHeaderLen)
+
+	binary.LittleEndian.PutUint32(buf, h.Size)
+	buf[4] = byte(h.Type)
+	binary.BigEndian.PutUint32(buf[5:], h.Coarse)
+	buf[9] = byte(h.Fine)
+
+	return buf
 }
 
 func DecodeCCSDS(body []byte) (CCSDSHeader, error) {
@@ -357,7 +363,7 @@ func encodeESA(e ESAHeader) []byte {
 	binary.BigEndian.PutUint32(buf, e.Coarse)
 	buf[4] = byte(e.Fine)
 	buf[5] = byte(e.Info)
-	binary.BigEndian.PutUint32(buf, e.Sid)
+	binary.BigEndian.PutUint32(buf[6:], e.Sid)
 
 	return buf
 }
