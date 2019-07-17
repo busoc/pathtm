@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,8 +48,9 @@ func runMerge(cmd *cli.Command, args []string) error {
 func runTake(cmd *cli.Command, args []string) error {
 	var t taker
 
-	cmd.Flag.DurationVar(&t.Interval, "d", 0, "")
-	cmd.Flag.StringVar(&t.Prefix, "n", "", "")
+	cmd.Flag.StringVar(&t.Prefix, "n", "", "prefix")
+	cmd.Flag.StringVar(&t.Format, "f", "", "format")
+	cmd.Flag.DurationVar(&t.Interval, "d", 0, "interval")
 	cmd.Flag.IntVar(&t.Apid, "p", 0, "apid")
 	cmd.Flag.IntVar(&t.Size, "s", 0, "size")
 	cmd.Flag.IntVar(&t.Count, "c", 0, "count")
@@ -70,8 +72,9 @@ func runTake(cmd *cli.Command, args []string) error {
 }
 
 type taker struct {
-	Interval time.Duration
+	Format   string
 	Prefix   string
+	Interval time.Duration
 	Apid     int
 	Size     int
 	Count    int
@@ -93,7 +96,11 @@ func (t *taker) Sort(file string, dirs []string) error {
 
 	var wc io.WriteCloser
 	if t.Interval > 0 {
-		wc, err = roll.Roll(t.Open(file), roll.WithThreshold(t.Size, t.Count))
+		fn, err := t.Open(file)
+		if err != nil {
+			return err
+		}
+		wc, err = roll.Roll(fn, roll.WithThreshold(t.Size, t.Count))
 	} else {
 		wc, err = os.Create(file)
 	}
@@ -135,7 +142,7 @@ func (t *taker) Sort(file string, dirs []string) error {
 	}
 }
 
-func (t *taker) Open(dir string) roll.NextFunc {
+func (t *taker) Open(dir string) (roll.NextFunc, error) {
 	if t.Prefix == "" {
 		if t.Apid != 0 {
 			t.Prefix = fmt.Sprint(t.Apid)
@@ -145,12 +152,39 @@ func (t *taker) Open(dir string) roll.NextFunc {
 	} else {
 		t.Prefix = strings.TrimRight(t.Prefix, "_-")
 	}
-	return func(i int, w time.Time) (io.WriteCloser, []io.Closer, error) {
+	var fn roll.NextFunc
+	switch t.Format {
+	case "flat", "":
+		fn = rotateFlat(t, dir)
+	case "time":
+		fn = rotateTime(t, dir)
+	default:
+		return nil, fmt.Errorf("unsupported format %q", t.Format)
+	}
+	return fn, nil
+}
+
+func rotateTime(t *taker, base string) roll.NextFunc {
+	return func(_ int, _ time.Time) (io.WriteCloser, []io.Closer, error) {
+		year, doy := t.state.Stamp.Year(), t.state.Stamp.YearDay()
+
+		dir := filepath.Join(base, fmt.Sprintf("%04d", year))
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, nil, err
 		}
-		file := fmt.Sprintf("%s_%06d_%s.dat", t.Prefix, i-1, w.Format("20060102_150405"))
+		file := fmt.Sprintf("%s_%03d.dat", t.Prefix, doy)
 		wc, err := os.Create(filepath.Join(dir, file))
+		return wc, nil, err
+	}
+}
+
+func rotateFlat(t *taker, base string) roll.NextFunc {
+	return func(i int, w time.Time) (io.WriteCloser, []io.Closer, error) {
+		if err := os.MkdirAll(base, 0755); err != nil {
+			return nil, nil, err
+		}
+		file := fmt.Sprintf("%s_%06d_%s.dat", t.Prefix, i-1, w.Format("20060102_150405"))
+		wc, err := os.Create(filepath.Join(base, file))
 		return wc, nil, err
 	}
 }

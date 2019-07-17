@@ -43,7 +43,7 @@ var commands = []*cli.Command{
 	},
 	{
 		Usage: "take [-p apid] [-d duration] [-c count] [-s size] [-n prefix] <datadir> <file...>",
-		Short: "",
+		Short: "gather packets of an apid into its file(s)",
 		Run:   runTake,
 	},
 	{
