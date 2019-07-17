@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -72,6 +72,7 @@ func runTake(cmd *cli.Command, args []string) error {
 }
 
 type taker struct {
+	Datadir  string
 	Format   string
 	Prefix   string
 	Interval time.Duration
@@ -85,6 +86,7 @@ type taker struct {
 		Size    int
 		Stamp   time.Time
 	}
+	file string
 }
 
 func (t *taker) Sort(file string, dirs []string) error {
@@ -118,6 +120,9 @@ func (t *taker) Sort(file string, dirs []string) error {
 				if !t.state.Stamp.IsZero() && w.Sub(t.state.Stamp) >= t.Interval {
 					if r, ok := wc.(*roll.Roller); ok {
 						r.Rotate()
+						if err := t.moveFile(t.state.Stamp); err != nil {
+							return err
+						}
 					}
 				}
 				if t.state.Stamp.IsZero() || w.Sub(t.state.Stamp) >= t.Interval {
@@ -152,39 +157,71 @@ func (t *taker) Open(dir string) (roll.NextFunc, error) {
 	} else {
 		t.Prefix = strings.TrimRight(t.Prefix, "_-")
 	}
+	t.Datadir = dir
 	var fn roll.NextFunc
 	switch t.Format {
 	case "flat", "":
-		fn = rotateFlat(t, dir)
+		fn = rotateFlat(t)
 	case "time":
-		fn = rotateTime(t, dir)
+		fn = rotateTime(t)
 	default:
 		return nil, fmt.Errorf("unsupported format %q", t.Format)
 	}
 	return fn, nil
 }
 
-func rotateTime(t *taker, base string) roll.NextFunc {
-	return func(_ int, _ time.Time) (io.WriteCloser, []io.Closer, error) {
-		year, doy := t.state.Stamp.Year(), t.state.Stamp.YearDay()
+func (t *taker) moveFile(when time.Time) error {
+	if t.file == "" {
+		return nil
+	}
+	dir := filepath.Join(t.Datadir, fmt.Sprintf("%04d", when.Year()))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	file := filepath.Join(dir, fmt.Sprintf("%s_%03d.dat", t.Prefix, when.YearDay()))
+	err := copyFile(t.file, file)
+	if err == nil {
+		err = os.Remove(t.file)
+	}
+	return err
+}
 
-		dir := filepath.Join(base, fmt.Sprintf("%04d", year))
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return nil, nil, err
+func copyFile(src, dst string) error {
+	w, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+
+	r, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	_, err = io.Copy(w, r)
+	return err
+}
+
+func rotateTime(t *taker) roll.NextFunc {
+	return func(_ int, _ time.Time) (io.WriteCloser, []io.Closer, error) {
+		wc, err := ioutil.TempFile("", "tmc-tk-*.dat")
+		if err == nil {
+			t.file = wc.Name()
+		} else {
+			t.file = ""
 		}
-		file := fmt.Sprintf("%s_%03d.dat", t.Prefix, doy)
-		wc, err := os.Create(filepath.Join(dir, file))
 		return wc, nil, err
 	}
 }
 
-func rotateFlat(t *taker, base string) roll.NextFunc {
+func rotateFlat(t *taker) roll.NextFunc {
 	return func(i int, w time.Time) (io.WriteCloser, []io.Closer, error) {
-		if err := os.MkdirAll(base, 0755); err != nil {
+		if err := os.MkdirAll(t.Datadir, 0755); err != nil {
 			return nil, nil, err
 		}
 		file := fmt.Sprintf("%s_%06d_%s.dat", t.Prefix, i-1, w.Format("20060102_150405"))
-		wc, err := os.Create(filepath.Join(base, file))
+		wc, err := os.Create(filepath.Join(t.Datadir, file))
 		return wc, nil, err
 	}
 }
