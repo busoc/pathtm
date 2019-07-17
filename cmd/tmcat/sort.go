@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,8 +46,7 @@ func runMerge(cmd *cli.Command, args []string) error {
 	})
 }
 
-// specifiers for format
-//
+type MakeFunc func(string, int, time.Time) (string, error)
 
 func runTake(cmd *cli.Command, args []string) error {
 	var t taker
@@ -57,6 +57,7 @@ func runTake(cmd *cli.Command, args []string) error {
 	cmd.Flag.IntVar(&t.Apid, "p", 0, "apid")
 	cmd.Flag.IntVar(&t.Size, "s", 0, "size")
 	cmd.Flag.IntVar(&t.Count, "c", 0, "count")
+	cmd.Flag.BoolVar(&t.Current, "x", false, "use current time")
 
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
@@ -82,6 +83,9 @@ type taker struct {
 	Apid     int
 	Size     int
 	Count    int
+	Current  bool
+
+	Make MakeFunc
 
 	state struct {
 		Count   int
@@ -132,7 +136,7 @@ func (t *taker) Sort(file string, dirs []string) error {
 				t.state.Skipped++
 			}
 		case io.EOF:
-			return t.moveFile(t.state.Stamp)
+			return t.moveFile(t.Apid, t.state.Stamp)
 		default:
 			return err
 		}
@@ -146,7 +150,7 @@ func (t *taker) rotateAndMove(wc io.Writer, w time.Time) error {
 	if !t.state.Stamp.IsZero() && w.Sub(t.state.Stamp) >= t.Interval {
 		if r, ok := wc.(*roll.Roller); ok {
 			r.Rotate()
-			if err := t.moveFile(t.state.Stamp); err != nil {
+			if err := t.moveFile(t.Apid, t.state.Stamp); err != nil {
 				return err
 			}
 		}
@@ -170,27 +174,37 @@ func (t *taker) Open(dir string) (roll.NextFunc, error) {
 	t.Datadir = dir
 	var fn roll.NextFunc
 	switch t.Format {
-	case "flat", "":
+	case "":
 		fn = rotateFlat(t)
-	case "time":
-		fn = rotateTime(t)
 	default:
-		return nil, fmt.Errorf("unsupported format %q", t.Format)
+		make, err := parseSpecifier(t.Format)
+		if err != nil {
+			return nil, err
+		} else {
+			t.Make = make
+		}
+		fn = rotateTime(t)
 	}
 	return fn, nil
 }
 
-func (t *taker) moveFile(when time.Time) error {
+func (t *taker) moveFile(apid int, when time.Time) error {
 	if t.file == "" {
 		return nil
 	}
-	dir := filepath.Join(t.Datadir, fmt.Sprintf("%04d", when.Year()))
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if t.Current {
+		when = time.Now().UTC()
+	}
+	dir, err := t.Make(t.Datadir, apid, when)
+	if err != nil {
 		return err
 	}
+	// dir := filepath.Join(t.Datadir, fmt.Sprintf("%04d", when.Year()))
+	// if err := os.MkdirAll(dir, 0755); err != nil {
+	// 	return err
+	// }
 	file := filepath.Join(dir, fmt.Sprintf("%s_%03d.dat", t.Prefix, when.YearDay()))
-	err := copyFile(t.file, file)
-	if err == nil {
+	if err = copyFile(t.file, file); err == nil {
 		err = os.Remove(t.file)
 	}
 	return err
@@ -234,4 +248,89 @@ func rotateFlat(t *taker) roll.NextFunc {
 		wc, err := os.Create(filepath.Join(t.Datadir, file))
 		return wc, nil, err
 	}
+}
+
+// specifiers for format
+// %A: apid
+// %Y: year
+// %M: month
+// %d: day of month
+// %D: day of year
+// %h: hour
+// %m: minute
+func parseSpecifier(str string) (MakeFunc, error) {
+	isDigit := func(b byte) bool {
+		return b >= '0' && b <= '9'
+	}
+	var funcs []func(int, time.Time) string
+	for i := 0; i < len(str); i++ {
+		if str[i] != '%' {
+			continue
+		}
+		i++
+
+		var resolution int
+		if isDigit(str[i]) {
+			pos := i
+			for isDigit(str[i]) {
+				i++
+			}
+			x, err := strconv.Atoi(str[pos:i])
+			if err != nil {
+				return nil, err
+			}
+			resolution = x
+		}
+
+		var f func(int, time.Time) string
+		switch str[i] {
+		case 'Y':
+			f = func(_ int, w time.Time) string { return fmt.Sprintf("%04d", w.Year()) }
+		case 'M':
+			f = func(_ int, w time.Time) string { return fmt.Sprintf("%02d", w.Month()) }
+		case 'd':
+			f = func(_ int, w time.Time) string {
+				_, _, d := w.Date()
+				return fmt.Sprintf("%02d", d)
+			}
+		case 'D':
+			f = func(_ int, w time.Time) string { return fmt.Sprintf("%03d", w.YearDay()) }
+		case 'h':
+			f = func(_ int, w time.Time) string {
+				if resolution > 0 {
+					w = w.Truncate(time.Hour * time.Duration(resolution))
+				}
+				return fmt.Sprintf("%02d", w.Hour())
+			}
+		case 'm':
+			f = func(_ int, w time.Time) string {
+				if resolution > 0 {
+					w = w.Truncate(time.Minute * time.Duration(resolution))
+				}
+				return fmt.Sprintf("%02d", w.Minute())
+			}
+		case 'A':
+			f = func(a int, w time.Time) string {
+				str := "pathtm"
+				if a >= 0 {
+					str = strconv.Itoa(a)
+				}
+				return str
+			}
+		default:
+			return nil, fmt.Errorf("unknown specifier: %s", str[i-1:i+1])
+		}
+		funcs = append(funcs, f)
+	}
+	if len(funcs) == 0 {
+		return nil, fmt.Errorf("invalid format string: %s", str)
+	}
+	return func(base string, a int, w time.Time) (string, error) {
+		ps := []string{base}
+		for _, f := range funcs {
+			ps = append(ps, f(a, w))
+		}
+		dir := filepath.Join(ps...)
+		return dir, os.MkdirAll(dir, 0755)
+	}, nil
 }
