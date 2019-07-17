@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -46,8 +45,6 @@ func runMerge(cmd *cli.Command, args []string) error {
 	})
 }
 
-type MakeFunc func(string, int, time.Time) (string, error)
-
 func runTake(cmd *cli.Command, args []string) error {
 	var t taker
 
@@ -85,7 +82,7 @@ type taker struct {
 	Count    int
 	Current  bool
 
-	Make MakeFunc
+	Make rt.MakeFunc
 
 	state struct {
 		Count   int
@@ -177,7 +174,7 @@ func (t *taker) Open(dir string) (roll.NextFunc, error) {
 	case "":
 		fn = rotateFlat(t)
 	default:
-		make, err := parseSpecifier(t.Format)
+		make, err := rt.Make(dir, t.Format)
 		if err != nil {
 			return nil, err
 		} else {
@@ -189,25 +186,35 @@ func (t *taker) Open(dir string) (roll.NextFunc, error) {
 }
 
 func (t *taker) moveFile(apid int, when time.Time) error {
-	if t.file == "" {
+	if t.file == "" || t.Make == nil {
 		return nil
 	}
 	if t.Current {
 		when = time.Now().UTC()
 	}
-	dir, err := t.Make(t.Datadir, apid, when)
+	dir, err := t.Make(dummy(apid, when))
 	if err != nil {
 		return err
 	}
-	// dir := filepath.Join(t.Datadir, fmt.Sprintf("%04d", when.Year()))
-	// if err := os.MkdirAll(dir, 0755); err != nil {
-	// 	return err
-	// }
+
 	file := filepath.Join(dir, fmt.Sprintf("%s_%03d.dat", t.Prefix, when.YearDay()))
 	if err = copyFile(t.file, file); err == nil {
 		err = os.Remove(t.file)
 	}
 	return err
+}
+
+type dumb struct {
+	apid int
+	when time.Time
+}
+
+func (d dumb) Pid() int             { return d.apid }
+func (d dumb) Sid() int             { return d.apid }
+func (d dumb) Timestamp() time.Time { return d.when }
+
+func dummy(a int, w time.Time) rt.Packet {
+	return dumb{apid: a, when: w}
 }
 
 func copyFile(src, dst string) error {
@@ -248,89 +255,4 @@ func rotateFlat(t *taker) roll.NextFunc {
 		wc, err := os.Create(filepath.Join(t.Datadir, file))
 		return wc, nil, err
 	}
-}
-
-// specifiers for format
-// %A: apid
-// %Y: year
-// %M: month
-// %d: day of month
-// %D: day of year
-// %h: hour
-// %m: minute
-func parseSpecifier(str string) (MakeFunc, error) {
-	isDigit := func(b byte) bool {
-		return b >= '0' && b <= '9'
-	}
-	var funcs []func(int, time.Time) string
-	for i := 0; i < len(str); i++ {
-		if str[i] != '%' {
-			continue
-		}
-		i++
-
-		var resolution int
-		if isDigit(str[i]) {
-			pos := i
-			for isDigit(str[i]) {
-				i++
-			}
-			x, err := strconv.Atoi(str[pos:i])
-			if err != nil {
-				return nil, err
-			}
-			resolution = x
-		}
-
-		var f func(int, time.Time) string
-		switch str[i] {
-		case 'Y':
-			f = func(_ int, w time.Time) string { return fmt.Sprintf("%04d", w.Year()) }
-		case 'M':
-			f = func(_ int, w time.Time) string { return fmt.Sprintf("%02d", w.Month()) }
-		case 'd':
-			f = func(_ int, w time.Time) string {
-				_, _, d := w.Date()
-				return fmt.Sprintf("%02d", d)
-			}
-		case 'D':
-			f = func(_ int, w time.Time) string { return fmt.Sprintf("%03d", w.YearDay()) }
-		case 'h':
-			f = func(_ int, w time.Time) string {
-				if resolution > 0 {
-					w = w.Truncate(time.Hour * time.Duration(resolution))
-				}
-				return fmt.Sprintf("%02d", w.Hour())
-			}
-		case 'm':
-			f = func(_ int, w time.Time) string {
-				if resolution > 0 {
-					w = w.Truncate(time.Minute * time.Duration(resolution))
-				}
-				return fmt.Sprintf("%02d", w.Minute())
-			}
-		case 'A':
-			f = func(a int, w time.Time) string {
-				str := "pathtm"
-				if a >= 0 {
-					str = strconv.Itoa(a)
-				}
-				return str
-			}
-		default:
-			return nil, fmt.Errorf("unknown specifier: %s", str[i-1:i+1])
-		}
-		funcs = append(funcs, f)
-	}
-	if len(funcs) == 0 {
-		return nil, fmt.Errorf("invalid format string: %s", str)
-	}
-	return func(base string, a int, w time.Time) (string, error) {
-		ps := []string{base}
-		for _, f := range funcs {
-			ps = append(ps, f(a, w))
-		}
-		dir := filepath.Join(ps...)
-		return dir, os.MkdirAll(dir, 0755)
-	}, nil
 }
