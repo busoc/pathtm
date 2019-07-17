@@ -45,6 +45,9 @@ func runMerge(cmd *cli.Command, args []string) error {
 	})
 }
 
+// specifiers for format
+//
+
 func runTake(cmd *cli.Command, args []string) error {
 	var t taker
 
@@ -115,19 +118,8 @@ func (t *taker) Sort(file string, dirs []string) error {
 	for {
 		switch p, err := d.Decode(true); err {
 		case nil:
-			if t.Interval >= rt.Five {
-				w := p.Timestamp()
-				if !t.state.Stamp.IsZero() && w.Sub(t.state.Stamp) >= t.Interval {
-					if r, ok := wc.(*roll.Roller); ok {
-						r.Rotate()
-						if err := t.moveFile(t.state.Stamp); err != nil {
-							return err
-						}
-					}
-				}
-				if t.state.Stamp.IsZero() || w.Sub(t.state.Stamp) >= t.Interval {
-					t.state.Stamp = w
-				}
+			if err := t.rotateAndMove(wc, p.Timestamp()); err != nil {
+				return err
 			}
 			if buf, err := p.Marshal(); err == nil {
 				if n, err := wc.Write(buf); err != nil {
@@ -140,11 +132,29 @@ func (t *taker) Sort(file string, dirs []string) error {
 				t.state.Skipped++
 			}
 		case io.EOF:
-			return nil
+			return t.moveFile(t.state.Stamp)
 		default:
 			return err
 		}
 	}
+}
+
+func (t *taker) rotateAndMove(wc io.Writer, w time.Time) error {
+	if t.Interval < rt.Five {
+		return nil
+	}
+	if !t.state.Stamp.IsZero() && w.Sub(t.state.Stamp) >= t.Interval {
+		if r, ok := wc.(*roll.Roller); ok {
+			r.Rotate()
+			if err := t.moveFile(t.state.Stamp); err != nil {
+				return err
+			}
+		}
+	}
+	if t.state.Stamp.IsZero() || w.Sub(t.state.Stamp) >= t.Interval {
+		t.state.Stamp = w
+	}
+	return nil
 }
 
 func (t *taker) Open(dir string) (roll.NextFunc, error) {
