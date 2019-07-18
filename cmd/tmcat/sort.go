@@ -86,7 +86,8 @@ type taker struct {
 		Size    int
 		Stamp   time.Time
 	}
-	file *os.File
+	file    *os.File
+	written int
 }
 
 func (t *taker) Sort(dirs []string) error {
@@ -114,6 +115,7 @@ func (t *taker) Sort(dirs []string) error {
 				if n, err := t.file.Write(buf); err != nil {
 					t.state.Skipped++
 				} else {
+					t.written += n
 					t.state.Size += n
 					t.state.Count++
 				}
@@ -151,6 +153,9 @@ func (t *taker) openFile() error {
 }
 
 func (t *taker) moveFile(when time.Time) error {
+	if t.written == 0 {
+		return nil
+	}
 	defer t.file.Close()
 	if t.Current {
 		when = time.Now().UTC()
@@ -162,6 +167,7 @@ func (t *taker) moveFile(when time.Time) error {
 	}
 
 	if err = t.builder.Copy(t.file, t.Apid, when); err == nil {
+		t.written = 0
 		err = os.Remove(t.file.Name())
 	}
 	return err
