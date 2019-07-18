@@ -5,8 +5,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/busoc/pathtm"
@@ -48,8 +46,6 @@ func runMerge(cmd *cli.Command, args []string) error {
 func runTake(cmd *cli.Command, args []string) error {
 	var t taker
 
-	cmd.Flag.StringVar(&t.Prefix, "n", "", "prefix")
-	cmd.Flag.StringVar(&t.Format, "f", "", "format")
 	cmd.Flag.DurationVar(&t.Interval, "d", 0, "interval")
 	cmd.Flag.IntVar(&t.Apid, "p", 0, "apid")
 	cmd.Flag.IntVar(&t.Size, "s", 0, "size")
@@ -73,16 +69,13 @@ func runTake(cmd *cli.Command, args []string) error {
 }
 
 type taker struct {
-	Datadir  string
-	Format   string
-	Prefix   string
 	Interval time.Duration
 	Apid     int
 	Size     int
 	Count    int
 	Current  bool
 
-	Make rt.MakeFunc
+	builder rt.Builder
 
 	state struct {
 		Count   int
@@ -133,7 +126,7 @@ func (t *taker) Sort(file string, dirs []string) error {
 				t.state.Skipped++
 			}
 		case io.EOF:
-			return t.moveFile(t.Apid, t.state.Stamp)
+			return t.moveFile(t.state.Stamp)
 		default:
 			return err
 		}
@@ -147,7 +140,7 @@ func (t *taker) rotateAndMove(wc io.Writer, w time.Time) error {
 	if !t.state.Stamp.IsZero() && w.Sub(t.state.Stamp) >= t.Interval {
 		if r, ok := wc.(*roll.Roller); ok {
 			r.Rotate()
-			if err := t.moveFile(t.Apid, t.state.Stamp); err != nil {
+			if err := t.moveFile(t.state.Stamp); err != nil {
 				return err
 			}
 		}
@@ -159,79 +152,28 @@ func (t *taker) rotateAndMove(wc io.Writer, w time.Time) error {
 }
 
 func (t *taker) Open(dir string) (roll.NextFunc, error) {
-	if t.Prefix == "" {
-		if t.Apid != 0 {
-			t.Prefix = fmt.Sprint(t.Apid)
-		} else {
-			t.Prefix = "rt"
-		}
-	} else {
-		t.Prefix = strings.TrimRight(t.Prefix, "_-")
+	b, err := rt.NewBuilder(dir)
+	if err != nil {
+		return nil, err
 	}
-	t.Datadir = dir
-	var fn roll.NextFunc
-	switch t.Format {
-	case "":
-		fn = rotateFlat(t)
-	default:
-		make, err := rt.Make(dir, t.Format)
-		if err != nil {
-			return nil, err
-		} else {
-			t.Make = make
-		}
-		fn = rotateTime(t)
-	}
-	return fn, nil
+	t.builder = b
+	return rotateTime(t), nil
 }
 
-func (t *taker) moveFile(apid int, when time.Time) error {
-	if t.file == "" || t.Make == nil {
+func (t *taker) moveFile(when time.Time) error {
+	if t.file == "" {
 		return nil
 	}
 	if t.Current {
 		when = time.Now().UTC()
 	}
-	dir, err := t.Make(dummy(apid, when))
-	if err != nil {
-		return err
-	}
 
-	file := filepath.Join(dir, fmt.Sprintf("%s_%03d.dat", t.Prefix, when.YearDay()))
-	if err = copyFile(t.file, file); err == nil {
-		err = os.Remove(t.file)
-	}
-	return err
-}
-
-type dumb struct {
-	apid int
-	when time.Time
-}
-
-func (d dumb) Pid() int             { return d.apid }
-func (d dumb) Sid() int             { return d.apid }
-func (d dumb) Timestamp() time.Time { return d.when }
-
-func dummy(a int, w time.Time) rt.Packet {
-	return dumb{apid: a, when: w}
-}
-
-func copyFile(src, dst string) error {
-	w, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer w.Close()
-
-	r, err := os.Open(src)
+	r, err := os.Open(t.file)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
-
-	_, err = io.Copy(w, r)
-	return err
+	return t.builder.Copy(r, t.Apid, when)
 }
 
 func rotateTime(t *taker) roll.NextFunc {
@@ -242,17 +184,6 @@ func rotateTime(t *taker) roll.NextFunc {
 		} else {
 			t.file = ""
 		}
-		return wc, nil, err
-	}
-}
-
-func rotateFlat(t *taker) roll.NextFunc {
-	return func(i int, w time.Time) (io.WriteCloser, []io.Closer, error) {
-		if err := os.MkdirAll(t.Datadir, 0755); err != nil {
-			return nil, nil, err
-		}
-		file := fmt.Sprintf("%s_%06d_%s.dat", t.Prefix, i-1, w.Format("20060102_150405"))
-		wc, err := os.Create(filepath.Join(t.Datadir, file))
 		return wc, nil, err
 	}
 }
