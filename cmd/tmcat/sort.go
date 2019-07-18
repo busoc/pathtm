@@ -11,6 +11,7 @@ import (
 	"github.com/busoc/rt"
 	"github.com/midbel/cli"
 	"github.com/midbel/sizefmt"
+	"github.com/pkg/profile"
 )
 
 func runMerge(cmd *cli.Command, args []string) error {
@@ -46,6 +47,7 @@ func runMerge(cmd *cli.Command, args []string) error {
 func runTake(cmd *cli.Command, args []string) error {
 	var t taker
 
+	mode := cmd.Flag.String("profile", "", "")
 	suffix := cmd.Flag.Bool("x", false, "")
 	cmd.Flag.DurationVar(&t.Interval, "d", 0, "interval")
 	cmd.Flag.IntVar(&t.Apid, "p", 0, "apid")
@@ -53,6 +55,12 @@ func runTake(cmd *cli.Command, args []string) error {
 
 	if err := cmd.Flag.Parse(args); err != nil {
 		return err
+	}
+	switch *mode {
+	case "mem", "memory", "ram":
+		defer profile.Start(profile.MemProfile).Stop()
+	case "cpu":
+		defer profile.Start(profile.CPUProfile).Stop()
 	}
 
 	var err error
