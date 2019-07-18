@@ -120,16 +120,17 @@ func (t *taker) Sort(dirs []string) error {
 			if err := t.rotateFile(p.Timestamp()); err != nil {
 				return err
 			}
-			if buf, err := p.Marshal(); err == nil {
-				if n, err := t.file.Write(buf); err != nil {
-					t.state.Skipped++
-				} else {
-					t.written += n
-					t.state.Size += n
-					t.state.Count++
-				}
-			} else {
+			buf, err := p.Marshal()
+			if err != nil {
 				t.state.Skipped++
+				continue
+			}
+			if n, err := t.file.Write(buf); err != nil {
+				t.state.Skipped++
+			} else {
+				t.written += n
+				t.state.Size += n
+				t.state.Count++
 			}
 		case io.EOF:
 			return t.moveFile(t.state.Stamp)
