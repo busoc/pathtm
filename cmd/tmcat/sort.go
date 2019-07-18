@@ -86,6 +86,7 @@ type taker struct {
 		Size    int
 		Stamp   time.Time
 	}
+
 	file    *os.File
 	written int
 }
@@ -108,7 +109,7 @@ func (t *taker) Sort(dirs []string) error {
 	for {
 		switch p, err := d.Decode(true); err {
 		case nil:
-			if err := t.rotateAndMove(p.Timestamp()); err != nil {
+			if err := t.rotateFile(p.Timestamp()); err != nil {
 				return err
 			}
 			if buf, err := p.Marshal(); err == nil {
@@ -130,7 +131,7 @@ func (t *taker) Sort(dirs []string) error {
 	}
 }
 
-func (t *taker) rotateAndMove(w time.Time) error {
+func (t *taker) rotateFile(w time.Time) error {
 	var err error
 	if !t.state.Stamp.IsZero() && w.Sub(t.state.Stamp) >= t.Interval {
 		if err = t.moveFile(t.state.Stamp); err != nil {
