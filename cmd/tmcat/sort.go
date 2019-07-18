@@ -10,7 +10,7 @@ import (
 	"github.com/busoc/pathtm"
 	"github.com/busoc/rt"
 	"github.com/midbel/cli"
-	"github.com/midbel/roll"
+	"github.com/midbel/sizefmt"
 )
 
 func runMerge(cmd *cli.Command, args []string) error {
@@ -46,13 +46,19 @@ func runMerge(cmd *cli.Command, args []string) error {
 func runTake(cmd *cli.Command, args []string) error {
 	var t taker
 
+	suffix := cmd.Flag.Bool("x", false, "")
 	cmd.Flag.DurationVar(&t.Interval, "d", 0, "interval")
 	cmd.Flag.IntVar(&t.Apid, "p", 0, "apid")
-	cmd.Flag.IntVar(&t.Size, "s", 0, "size")
-	cmd.Flag.IntVar(&t.Count, "c", 0, "count")
-	cmd.Flag.BoolVar(&t.Current, "x", false, "use current time")
+	cmd.Flag.BoolVar(&t.Current, "c", false, "use current time")
 
 	if err := cmd.Flag.Parse(args); err != nil {
+		return err
+	}
+
+	var err error
+
+	t.builder, err = rt.NewBuilder(cmd.Flag.Arg(0), *suffix)
+	if err != nil {
 		return err
 	}
 
@@ -60,10 +66,9 @@ func runTake(cmd *cli.Command, args []string) error {
 	for i := 1; i < cmd.Flag.NArg(); i++ {
 		dirs[i-1] = cmd.Flag.Arg(i)
 	}
-
-	err := t.Sort(cmd.Flag.Arg(0), dirs)
-	if err == nil {
-		fmt.Fprintf(os.Stdout, "%d packets written (%d skipped, %dKB)\n", t.state.Count, t.state.Skipped, t.state.Size>>10)
+	if err = t.Sort(dirs); err == nil {
+		size := sizefmt.Format(float64(t.state.Size), sizefmt.IEC)
+		fmt.Fprintf(os.Stdout, "%d packets written (%d skipped, %s)\n", t.state.Count, t.state.Skipped, size)
 	}
 	return err
 }
@@ -71,8 +76,6 @@ func runTake(cmd *cli.Command, args []string) error {
 type taker struct {
 	Interval time.Duration
 	Apid     int
-	Size     int
-	Count    int
 	Current  bool
 
 	builder rt.Builder
@@ -83,40 +86,32 @@ type taker struct {
 		Size    int
 		Stamp   time.Time
 	}
-	file string
+	file *os.File
 }
 
-func (t *taker) Sort(file string, dirs []string) error {
+func (t *taker) Sort(dirs []string) error {
+	if t.Interval == 0 {
+		t.Interval = rt.Five
+	}
 	mr, err := rt.Browse(dirs, true)
 	if err != nil {
 		return err
 	}
 	defer mr.Close()
 
-	var wc io.WriteCloser
-	if t.Interval > 0 {
-		fn, err := t.Open(file)
-		if err != nil {
-			return err
-		}
-		wc, err = roll.Roll(fn, roll.WithThreshold(t.Size, t.Count))
-	} else {
-		wc, err = os.Create(file)
-	}
-	if err != nil {
+	if err := t.openFile(); err != nil {
 		return err
 	}
-	defer wc.Close()
 
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(t.Apid))
 	for {
 		switch p, err := d.Decode(true); err {
 		case nil:
-			if err := t.rotateAndMove(wc, p.Timestamp()); err != nil {
+			if err := t.rotateAndMove(p.Timestamp()); err != nil {
 				return err
 			}
 			if buf, err := p.Marshal(); err == nil {
-				if n, err := wc.Write(buf); err != nil {
+				if n, err := t.file.Write(buf); err != nil {
 					t.state.Skipped++
 				} else {
 					t.state.Size += n
@@ -133,57 +128,41 @@ func (t *taker) Sort(file string, dirs []string) error {
 	}
 }
 
-func (t *taker) rotateAndMove(wc io.Writer, w time.Time) error {
-	if t.Interval < rt.Five {
-		return nil
-	}
+func (t *taker) rotateAndMove(w time.Time) error {
+	var err error
 	if !t.state.Stamp.IsZero() && w.Sub(t.state.Stamp) >= t.Interval {
-		if r, ok := wc.(*roll.Roller); ok {
-			r.Rotate()
-			if err := t.moveFile(t.state.Stamp); err != nil {
-				return err
-			}
+		if err = t.moveFile(t.state.Stamp); err != nil {
+			return err
 		}
+		err = t.openFile()
 	}
 	if t.state.Stamp.IsZero() || w.Sub(t.state.Stamp) >= t.Interval {
 		t.state.Stamp = w
 	}
-	return nil
+	return err
 }
 
-func (t *taker) Open(dir string) (roll.NextFunc, error) {
-	b, err := rt.NewBuilder(dir)
-	if err != nil {
-		return nil, err
+func (t *taker) openFile() error {
+	f, err := ioutil.TempFile("", "tmc-tk-*.dat")
+	if err == nil {
+		t.file = f
 	}
-	t.builder = b
-	return rotateTime(t), nil
+	return err
 }
 
 func (t *taker) moveFile(when time.Time) error {
-	if t.file == "" {
-		return nil
-	}
+	defer t.file.Close()
 	if t.Current {
 		when = time.Now().UTC()
 	}
 
-	r, err := os.Open(t.file)
+	_, err := t.file.Seek(0, io.SeekStart)
 	if err != nil {
 		return err
 	}
-	defer r.Close()
-	return t.builder.Copy(r, t.Apid, when)
-}
 
-func rotateTime(t *taker) roll.NextFunc {
-	return func(_ int, _ time.Time) (io.WriteCloser, []io.Closer, error) {
-		wc, err := ioutil.TempFile("", "tmc-tk-*.dat")
-		if err == nil {
-			t.file = wc.Name()
-		} else {
-			t.file = ""
-		}
-		return wc, nil, err
+	if err = t.builder.Copy(t.file, t.Apid, when); err == nil {
+		err = os.Remove(t.file.Name())
 	}
+	return err
 }
