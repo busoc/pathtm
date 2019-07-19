@@ -115,15 +115,10 @@ func (t *taker) Sort(dirs []string) error {
 
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(t.Apid))
 	for {
-		switch p, err := d.Decode(true); err {
+		switch buf, when, err := d.Marshal(); err {
 		case nil:
-			if err := t.rotateFile(p.Timestamp()); err != nil {
+			if err := t.rotateFile(when); err != nil {
 				return err
-			}
-			buf, err := p.Marshal()
-			if err != nil {
-				t.state.Skipped++
-				continue
 			}
 			if n, err := t.file.Write(buf); err != nil {
 				t.state.Skipped++

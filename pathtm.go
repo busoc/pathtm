@@ -177,8 +177,13 @@ func NewDecoder(r io.Reader, filter func(CCSDSHeader, ESAHeader) (bool, error)) 
 	}
 }
 
-func DecodePacket(buffer []byte, data bool) (Packet, error) {
-	return decodePacket(buffer, data)
+func (d *Decoder) Marshal() ([]byte, time.Time, error) {
+	p, err := d.Decode(true)
+	if err != nil {
+		return nil, time.Time{}, err 
+	}
+	buf, err := p.Marshal()
+	return buf, p.Timestamp(), err
 }
 
 func (d *Decoder) Decode(data bool) (p Packet, err error) {
@@ -200,6 +205,10 @@ func (d *Decoder) Decode(data bool) (p Packet, err error) {
 	}
 	return
 
+}
+
+func DecodePacket(buffer []byte, data bool) (Packet, error) {
+	return decodePacket(buffer, data)
 }
 
 func decodePacket(body []byte, data bool) (p Packet, err error) {
