@@ -99,6 +99,14 @@ type taker struct {
 	written int
 }
 
+type marshaller interface {
+	Marshal() ([]byte, error)
+}
+
+type  decoder interface {
+	Decode() (marshaller, error)
+}
+
 func (t *taker) Sort(dirs []string) error {
 	if t.Interval == 0 {
 		t.Interval = rt.Five
@@ -114,6 +122,9 @@ func (t *taker) Sort(dirs []string) error {
 	}
 
 	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(t.Apid))
+	if _, d := d.(marshaller); ok {
+		fmt.Println("could work")
+	}
 	for {
 		switch p, err := d.Decode(true); err {
 		case nil:
@@ -142,13 +153,14 @@ func (t *taker) Sort(dirs []string) error {
 
 func (t *taker) rotateFile(w time.Time) error {
 	var err error
-	if !t.state.Stamp.IsZero() && w.Sub(t.state.Stamp) >= t.Interval {
+	stamp := t.state.Stamp.Truncate(t.Interval)
+	if !t.state.Stamp.IsZero() && w.Sub(stamp) >= t.Interval {
 		if err = t.moveFile(t.state.Stamp); err != nil {
 			return err
 		}
 		err = t.openFile()
 	}
-	if t.state.Stamp.IsZero() || w.Sub(t.state.Stamp) >= t.Interval {
+	if t.state.Stamp.IsZero() || w.Sub(stamp) >= t.Interval {
 		t.state.Stamp = w
 	}
 	return err
