@@ -130,7 +130,10 @@ func (t *taker) Sort(dirs []string) error {
 		case io.EOF:
 			return t.moveFile(t.state.Stamp)
 		default:
-			return err
+			if when.IsZero() {
+				return err
+			}
+			t.state.Skipped++
 		}
 	}
 }
