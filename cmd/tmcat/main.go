@@ -42,7 +42,7 @@ var commands = []*cli.Command{
 		Run:   runDigest,
 	},
 	{
-		Usage: "take [-p apid] [-d duration] [-c curr-time] [-x with-suffix] <pattern> <file...>",
+		Usage: "take [-n label] [-p apid] [-d duration] [-c curr-time] [-x with-suffix] <pattern> <file...>",
 		Short: "gather packets of an apid into its file(s)",
 		Run:   runTake,
 	},

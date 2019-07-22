@@ -180,7 +180,7 @@ func NewDecoder(r io.Reader, filter func(CCSDSHeader, ESAHeader) (bool, error)) 
 func (d *Decoder) Marshal() ([]byte, time.Time, error) {
 	p, err := d.Decode(true)
 	if err != nil {
-		return nil, time.Time{}, err 
+		return nil, time.Time{}, err
 	}
 	buf, err := p.Marshal()
 	return buf, p.Timestamp(), err
