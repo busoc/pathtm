@@ -187,24 +187,26 @@ func (d *Decoder) Marshal() ([]byte, time.Time, error) {
 }
 
 func (d *Decoder) Decode(data bool) (p Packet, err error) {
-	var (
-		n    int
-		keep bool
-	)
-	n, err = d.inner.Read(d.buffer)
-	if err != nil {
+	var ok bool
+	for {
+		p, ok, err = d.nextPacket(data)
+		if ok || err != nil {
+			break
+		}
+	}
+	return
+}
+
+func (d *Decoder) nextPacket(data bool) (p Packet, keep bool, err error) {
+	var n int
+	if n, err = d.inner.Read(d.buffer); err != nil {
 		return
 	}
-	p, err = decodePacket(d.buffer[:n], data)
-	if err != nil {
+	if p, err = decodePacket(d.buffer[:n], data); err != nil {
 		return
 	}
 	keep, err = d.filter(p.CCSDSHeader, p.ESAHeader)
-	if !keep {
-		return d.Decode(data)
-	}
 	return
-
 }
 
 func DecodePacket(buffer []byte, data bool) (Packet, error) {
