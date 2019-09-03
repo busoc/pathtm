@@ -1,16 +1,11 @@
 package main
 
 import (
-	// "fmt"
-	// "io"
-	// "io/ioutil"
 	"os"
-	// "time"
 
 	"github.com/busoc/pathtm"
 	"github.com/busoc/rt"
 	"github.com/midbel/cli"
-	// "github.com/midbel/sizefmt"
 	"github.com/pkg/profile"
 )
 
@@ -47,7 +42,7 @@ func runMerge(cmd *cli.Command, args []string) error {
 func runTake(cmd *cli.Command, args []string) error {
 	var (
 		mode     = cmd.Flag.String("profile", "", "")
-		name = cmd.Flag.String("n", "", "upi")
+		name     = cmd.Flag.String("n", "", "name")
 		apid     = cmd.Flag.Int("p", 0, "apid")
 		interval = cmd.Flag.Duration("d", rt.Five, "interval")
 	)
