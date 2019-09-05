@@ -1,12 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/busoc/pathtm"
 	"github.com/busoc/rt"
 	"github.com/midbel/cli"
-	"github.com/pkg/profile"
+	// "github.com/pkg/profile"
 )
 
 func runMerge(cmd *cli.Command, args []string) error {
@@ -40,41 +41,5 @@ func runMerge(cmd *cli.Command, args []string) error {
 }
 
 func runTake(cmd *cli.Command, args []string) error {
-	var (
-		mode     = cmd.Flag.String("profile", "", "")
-		name     = cmd.Flag.String("n", "", "name")
-		apid     = cmd.Flag.Int("p", 0, "apid")
-		interval = cmd.Flag.Duration("d", rt.Five, "interval")
-	)
-	if err := cmd.Flag.Parse(args); err != nil {
-		return err
-	}
-
-	switch *mode {
-	case "mem", "memory", "ram":
-		defer profile.Start(profile.MemProfile).Stop()
-	case "cpu":
-		defer profile.Start(profile.CPUProfile).Stop()
-	}
-
-	dirs := make([]string, cmd.Flag.NArg()-1)
-	for i := 1; i < cmd.Flag.NArg(); i++ {
-		dirs[i-1] = cmd.Flag.Arg(i)
-	}
-	mr, err := rt.Browse(dirs, true)
-	if err != nil {
-		return err
-	}
-	defer mr.Close()
-
-	d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
-
-	sort, err := rt.Sort(d, cmd.Flag.Arg(0), *interval)
-	if err != nil {
-		return err
-	} else {
-		sort.Pid = *apid
-		sort.UPI = *name
-	}
-	return sort.Sort()
+	return fmt.Errorf("not yet implemented")
 }
