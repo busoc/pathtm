@@ -7,7 +7,6 @@ import (
 	"github.com/busoc/pathtm"
 	"github.com/busoc/rt"
 	"github.com/midbel/cli"
-	// "github.com/pkg/profile"
 )
 
 func runMerge(cmd *cli.Command, args []string) error {
@@ -41,5 +40,25 @@ func runMerge(cmd *cli.Command, args []string) error {
 }
 
 func runTake(cmd *cli.Command, args []string) error {
-	return fmt.Errorf("not yet implemented")
+	var (
+		apid     = cmd.Flag.Int("p", 0, "apid")
+		interval = cmd.Flag.Duration("d", rt.Five, "interval")
+	)
+	if err := cmd.Flag.Parse(args); err != nil {
+		return err
+	}
+
+	dirs := make([]string, cmd.Flag.NArg()-1)
+	for i := 1; i < cmd.Flag.NArg(); i++ {
+		dirs[i-1] = cmd.Flag.Arg(i)
+	}
+	mr, err := rt.Browse(dirs, true)
+	if err != nil {
+		return err
+	}
+	defer mr.Close()
+
+	// d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
+
+	return nil
 }
