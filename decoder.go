@@ -1,0 +1,57 @@
+package pathtm
+
+import (
+	"io"
+	"time"
+)
+
+type Decoder struct {
+	filter func(CCSDSHeader, ESAHeader) (bool, error)
+	inner  io.Reader
+	buffer []byte
+}
+
+func NewDecoder(r io.Reader, filter func(CCSDSHeader, ESAHeader) (bool, error)) *Decoder {
+	if filter == nil {
+		filter = func(_ CCSDSHeader, _ ESAHeader) (bool, error) {
+			return true, nil
+		}
+	}
+	return &Decoder{
+		filter: filter,
+		inner:  r,
+		buffer: make([]byte, BufferSize),
+	}
+}
+
+func (d *Decoder) Marshal() ([]byte, time.Time, error) {
+	p, err := d.Decode(true)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	buf, err := p.Marshal()
+	return buf, p.Timestamp(), err
+}
+
+func (d *Decoder) Decode(data bool) (p Packet, err error) {
+	var ok bool
+	for {
+		p, ok, err = d.nextPacket(data)
+		if ok || err != nil {
+			break
+		}
+	}
+	return
+}
+
+func (d *Decoder) nextPacket(data bool) (p Packet, keep bool, err error) {
+	var n int
+	if n, err = d.inner.Read(d.buffer); err != nil {
+		return
+	}
+	if p, err = decodePacket(d.buffer[:n], data); err != nil {
+		return
+	}
+	keep, err = d.filter(p.CCSDSHeader, p.ESAHeader)
+	return
+}

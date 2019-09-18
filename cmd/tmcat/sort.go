@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"time"
 
 	"github.com/busoc/pathtm"
 	"github.com/busoc/rt"
@@ -58,7 +60,26 @@ func runTake(cmd *cli.Command, args []string) error {
 	}
 	defer mr.Close()
 
-	// d := pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
-
-	return nil
+	var (
+		d = pathtm.NewDecoder(rt.NewReader(mr), pathtm.WithApid(*apid))
+		// ws = make(map[int]io.WriteCloser)
+		when time.Time
+	)
+	for {
+		switch _, w, err := d.Marshal(); err {
+		case nil:
+			w = w.Truncate(*interval)
+			if when.IsZero() {
+				when = w
+			}
+			if delta := w.Sub(when); delta >= *interval {
+				fmt.Println("write", when, delta)
+				when = w
+			}
+		case io.EOF:
+			return nil
+		default:
+			return err
+		}
+	}
 }

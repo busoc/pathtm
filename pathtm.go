@@ -22,6 +22,40 @@ const (
 	ESAHeaderLen   = 10
 )
 
+type Packet struct {
+	PTHHeader
+	CCSDSHeader
+	ESAHeader
+	Data []byte
+	Sum  uint32
+}
+
+func (p Packet) Timestamp() time.Time {
+	return p.ESAHeader.Timestamp()
+}
+
+func (p Packet) Missing(other Packet) int {
+	if other.Timestamp().After(p.Timestamp()) {
+		return 0
+	}
+	return p.CCSDSHeader.Missing(other.CCSDSHeader)
+}
+
+func (p Packet) Marshal() ([]byte, error) {
+	if len(p.Data) == 0 {
+		return nil, ErrEmpty
+	}
+	var offset int
+	buf := make([]byte, PTHHeaderLen+CCSDSHeaderLen+int(p.Len()))
+	offset += copy(buf[offset:], encodePTH(p.PTHHeader))
+	offset += copy(buf[offset:], encodeCCSDS(p.CCSDSHeader))
+	if set := (p.CCSDSHeader.Pid >> 11) & 0x1; set != 0 {
+		offset += copy(buf[offset:], encodeESA(p.ESAHeader))
+	}
+	offset += copy(buf[offset:], p.Data)
+	return buf, nil
+}
+
 type ESAPacketType uint8
 
 const (
@@ -108,105 +142,6 @@ func (c CCSDSSegment) String() string {
 	case 3:
 		return "unsegmented"
 	}
-}
-
-type Packet struct {
-	PTHHeader
-	CCSDSHeader
-	ESAHeader
-	Data []byte
-	Sum  uint32
-}
-
-func (p Packet) Timestamp() time.Time {
-	return p.ESAHeader.Timestamp()
-}
-
-func (p Packet) Missing(other Packet) int {
-	if other.Timestamp().After(p.Timestamp()) {
-		return 0
-	}
-	return p.CCSDSHeader.Missing(other.CCSDSHeader)
-}
-
-func (p Packet) Marshal() ([]byte, error) {
-	if len(p.Data) == 0 {
-		return nil, ErrEmpty
-	}
-	var offset int
-	buf := make([]byte, PTHHeaderLen+CCSDSHeaderLen+int(p.Len()))
-	offset += copy(buf[offset:], encodePTH(p.PTHHeader))
-	offset += copy(buf[offset:], encodeCCSDS(p.CCSDSHeader))
-	if set := (p.CCSDSHeader.Pid >> 11) & 0x1; set != 0 {
-		offset += copy(buf[offset:], encodeESA(p.ESAHeader))
-	}
-	offset += copy(buf[offset:], p.Data)
-	return buf, nil
-}
-
-type Decoder struct {
-	filter func(CCSDSHeader, ESAHeader) (bool, error)
-	inner  io.Reader
-	buffer []byte
-}
-
-func WithApid(apid int) func(CCSDSHeader, ESAHeader) (bool, error) {
-	i := uint16(apid)
-	return func(c CCSDSHeader, _ ESAHeader) (bool, error) {
-		return (i <= 0 || i == c.Apid()), nil
-	}
-}
-
-func WithSid(sid int) func(CCSDSHeader, ESAHeader) (bool, error) {
-	i := uint32(sid)
-	return func(_ CCSDSHeader, e ESAHeader) (bool, error) {
-		return (i <= 0 || i == e.Sid), nil
-	}
-}
-
-func NewDecoder(r io.Reader, filter func(CCSDSHeader, ESAHeader) (bool, error)) *Decoder {
-	if filter == nil {
-		filter = func(_ CCSDSHeader, _ ESAHeader) (bool, error) {
-			return true, nil
-		}
-	}
-	return &Decoder{
-		filter: filter,
-		inner:  r,
-		buffer: make([]byte, BufferSize),
-	}
-}
-
-func (d *Decoder) Marshal() ([]byte, time.Time, error) {
-	p, err := d.Decode(true)
-	if err != nil {
-		return nil, time.Time{}, err
-	}
-	buf, err := p.Marshal()
-	return buf, p.Timestamp(), err
-}
-
-func (d *Decoder) Decode(data bool) (p Packet, err error) {
-	var ok bool
-	for {
-		p, ok, err = d.nextPacket(data)
-		if ok || err != nil {
-			break
-		}
-	}
-	return
-}
-
-func (d *Decoder) nextPacket(data bool) (p Packet, keep bool, err error) {
-	var n int
-	if n, err = d.inner.Read(d.buffer); err != nil {
-		return
-	}
-	if p, err = decodePacket(d.buffer[:n], data); err != nil {
-		return
-	}
-	keep, err = d.filter(p.CCSDSHeader, p.ESAHeader)
-	return
 }
 
 func DecodePacket(buffer []byte, data bool) (Packet, error) {
