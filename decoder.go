@@ -55,3 +55,30 @@ func (d *Decoder) nextPacket(data bool) (p Packet, keep bool, err error) {
 	keep, err = d.filter(p.CCSDSHeader, p.ESAHeader)
 	return
 }
+
+func DecodePacket(buffer []byte, data bool) (Packet, error) {
+	return decodePacket(buffer, data)
+}
+
+func decodePacket(body []byte, data bool) (p Packet, err error) {
+	var offset int
+	if p.PTHHeader, err = decodePTH(body[offset:]); err != nil {
+		return
+	}
+	offset += PTHHeaderLen
+	if p.CCSDSHeader, err = decodeCCSDS(body[offset:]); err != nil {
+		return
+	}
+	offset += CCSDSHeaderLen
+	if set := (p.Pid >> 11) & 0x1; set != 0 {
+		if p.ESAHeader, err = decodeESA(body[offset:]); err != nil {
+			return
+		}
+		offset += ESAHeaderLen
+	}
+	if data {
+		p.Data = make([]byte, int(p.CCSDSHeader.Len()-ESAHeaderLen))
+		copy(p.Data, body[offset:])
+	}
+	return
+}

@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"fmt"
+	"os"
 
 	"github.com/midbel/cli"
 	"github.com/midbel/linewriter"
@@ -56,13 +57,10 @@ var commands = []*cli.Command{
 func main() {
 	defer func() {
 		if err := recover(); err != nil {
-			log.Fatalf("unexpected error: %s", err)
+			fmt.Fprintf(os.Stderr, "unexpected error: %s\n", err)
 		}
 	}()
-	log.SetFlags(0)
-	if err := cli.Run(commands, cli.Usage("tmcat", helpText, commands), nil); err != nil {
-		log.Fatalln(err)
-	}
+	cli.RunAndExit(commands, cli.Usage("tmcat", helpText, commands))
 }
 
 func Line(csv bool) *linewriter.Writer {
